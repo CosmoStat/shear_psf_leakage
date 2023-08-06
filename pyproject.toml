@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "shear_psf_leakage"
+version = "0.1.0"
+description = "PSF leakage for shear catalogue data"
+authors = [
+	"Martin Kilbinger <martin.kilbinger@cea.fr>",
+	"Clara Bonini <clara.bonini.t.bd>",
+]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+cs-util = "^0.0.4"
+lmfit = "^1.2.2"
+TreeCorr = "^4.3.3"
+uncertainties = "^3.1.7"
+matplotlib = "^3.7.2"
+stats = "^0.1.2-alpha.0"
+jupytext = "^1.15.0"
+jupyter = "^1.0.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+pydocstyle = "^6.3.0"
+pytest-cov = "^4.1.0"
+black = "^23.7.0"
+
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+leakage_scale = 'shear_psf_leakage.leakage_scale:main'
+leakage_object = 'shear_psf_leakage.leakage_object:main'
+transform_to_notebooks = "sp_peaks.transform_to_notebooks:main"
