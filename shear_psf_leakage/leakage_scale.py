@@ -2,7 +2,7 @@
 
 import sys
 
-from sp_validation.run import run_leakage_scale
+from shear_psf_leakage.run_scale import run_leakage_scale
 
 
 def main(argv=None):
@@ -11,6 +11,8 @@ def main(argv=None):
     Main program.
 
     """
+    if argv is None:
+        argv = sys.argv[0:]
     run_leakage_scale(*argv)
 
     return 0

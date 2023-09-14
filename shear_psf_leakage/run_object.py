@@ -615,29 +615,32 @@ class LeakageObject:
         Main processing of scale-dependent leakage.
 
         """
+        # To use same name as in notebook
+        obj = self
+
         # Check parameter validity
-        self.check_params()
+        obj.check_params()
 
         # Update parameters (here: strings to list)
-        self.update_params()
+        obj.update_params()
 
         # Prepare output directory
-        self.prepare_output()
+        obj.prepare_output()
 
-        if self._params["test"]:
+        if obj._params["test"]:
             # 2D spin-consistent test fit
-            self.test()
+            obj.test()
 
         else:
-            self.read_data()
+            obj.read_data()
 
-            if self._params["PSF_leakage"]:
+            if obj._params["PSF_leakage"]:
                 # Object-by-object spin-consistent PSF leakage
-                self.PSF_leakage()
+                obj.PSF_leakage()
 
-            if self._params["obs_leakage"]:
+            if obj._params["obs_leakage"]:
                 # Object-by-object dependence of general variables
-                self.obs_leakage()
+                obj.obs_leakage()
 
 
 def run_leakage_object(*args):

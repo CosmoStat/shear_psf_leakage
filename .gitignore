@@ -1,2 +1,9 @@
 dist
 notebooks/*.ipynb
+notebooks/.ipynb_checkpoints
+notebooks/leakage_object
+notebooks/unions_shapepipe_extended_2022_W3_v1.0.3.fits
+__pycache__
+__pycache__/*
+*/__pycache__/*
+build

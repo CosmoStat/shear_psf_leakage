@@ -20,9 +20,9 @@
 import os
 import matplotlib.pylab as plt
 
-from sp_validation import cat
-from sp_validation import io
-from sp_validation import run
+import shear_psf_leakage.run_scale as run
+from shear_psf_leakage.leakage import *
+
 # -
 
 # ## Set input parameters
@@ -34,27 +34,27 @@ params_in = {}
 # +
 # Data directory
 data_dir = f"{os.environ['HOME']}/astro/data/CFIS/v1.0/ShapePipe"
-params_in['data_dir'] = data_dir
+params_in["data_dir"] = data_dir
 
 # Input galaxy shear catalogue
-params_in['input_path_shear'] = f"{data_dir}/unions_shapepipe_extended_2022_v1.0.fits"
+params_in["input_path_shear"] = f"{data_dir}/unions_shapepipe_extended_2022_v1.0.fits"
 
 # Input star/PSF catalogue
-params_in['input_path_PSF'] = f"{data_dir}/unions_shapepipe_star_2022_v1.0.3.fits"
+params_in["input_path_PSF"] = f"{data_dir}/unions_shapepipe_star_2022_v1.0.3.fits"
 
 # Input galaxy redshift distribution (for theoretical model of xi_pm)
-params_in['dndz_path'] = f"{data_dir}/../nz/dndz_SP_A.txt"
+params_in["dndz_path"] = f"{data_dir}/../nz/dndz_SP_A.txt"
 # -
 
 # ### Other parameters
 
 # +
 # PSF ellipticty column names
-params_in['e1_PSF_star_col'] =  'e1'
-params_in['e2_PSF_star_col'] =  'e2'
+params_in["e1_PSF_star_col"] = "e1"
+params_in["e2_PSF_star_col"] = "e2"
 
 # Set verbose output
-params_in['verbose'] = True
+params_in["verbose"] = True
 # -
 
 # ## Compute leakage
@@ -74,40 +74,40 @@ for key in params_in:
 # ### Option 1. Run all at once
 
 # +
-#obj.run()
+# obj.run()
 # -
 
 # ### Option 2. Execute individual steps
 
 # +
-# Check parameter validity                                              
-obj.check_params() 
+# Check parameter validity
+obj.check_params()
 
-# Get all parameters defined in instance    
+# Get all parameters defined in instance
 params = obj._params
 # -
 
 # Prepare output
 if not os.path.exists(params["output_dir"]):
     os.mkdir(params["output_dir"])
-obj._stats_file = io.open_stats_file(params["output_dir"], "stats_file_leakage.txt") 
+obj._stats_file = open_stats_file(params["output_dir"], "stats_file_leakage.txt")
 
 # #### Prepare input
 
-# Read input shear                                                      
+# Read input shear
 dat_shear = obj.read_shear_cat()
 
-# Apply cuts to galaxy catalogue if required                            
-dat_shear = cat.cut_data(dat_shear, params["cut"], params["verbose"])
+# Apply cuts to galaxy catalogue if required
+dat_shear = cut_data(dat_shear, params["cut"], params["verbose"])
 
-# Read star catalogue                                                   
-dat_PSF = io.open_fits_or_npy(                                          
-    params["input_path_PSF"],                                           
-    hdu_no=params["hdu_psf"],                                           
-) 
+# Read star catalogue
+dat_PSF = open_fits_or_npy(
+    params["input_path_PSF"],
+    hdu_no=params["hdu_psf"],
+)
 
-# Deal with close objects in PSF catalogue (= stars on same position    
-        # from different exposures)                                             
+# Deal with close objects in PSF catalogue (= stars on same position
+# from different exposures)
 dat_PSF = obj.handle_close_objects(dat_PSF)
 
 # Copy variables to instance
@@ -136,7 +136,9 @@ obj.compute_xi_sys()
 # Plot
 obj.plot_xi_sys()
 
-params["dndz_path"] = '/home/mkilbing/astro/data/CFIS/v1.0/ShapePipe/../nz/dndz_SP_A.txt'
+params[
+    "dndz_path"
+] = "/home/mkilbing/astro/data/CFIS/v1.0/ShapePipe/../nz/dndz_SP_A.txt"
 
 # Theoretical model for xi_pm
 xi_p_theo, xi_m_theo = run.get_theo_xi_planck(
@@ -144,7 +146,5 @@ xi_p_theo, xi_m_theo = run.get_theo_xi_planck(
     params["dndz_path"],
 )
 
-#obj Plot ratio
+# obj Plot ratio
 obj.plot_xi_sys_ratio(xi_p_theo, xi_m_theo)
-
-
