@@ -6,21 +6,21 @@
     leakage.
 
 :Authors: Martin Kilbinger <martin.kilbinger@cea.fr>
-         Clara Bonini
-         Axel Guinot
+        Clara Bonini
+        Axel Guinot
 
 """
 
 import os
 
 import numpy as np
+import pickle
 import matplotlib.pylab as plt
 from lmfit import minimize, Parameters
 from uncertainties import ufloat
 from astropy.io import fits
 
 from .plot_style import *
-from . import plots
 
 
 # MKDEBUG TODO: to cs_util (and see sp_validation/io.py)
@@ -463,9 +463,6 @@ def quad_corr_quant(
     if weights is None:
         weights = np.ones_like(y[0])
 
-    if colors is None:
-        prop_cycle = plt.rcParams["axes.prop_cycle"]
-        colors = prop_cycle.by_key()["color"]
 
     size_all = len(y[0])
     for idx in range(1, n_y):
@@ -856,17 +853,9 @@ def print_fit_report(res, file=None):
 def corr_2d(
     x,
     y,
-    xlabel_arr,
-    ylabel_arr,
     weights=None,
     order="lin",
     mix=False,
-    n_bin=30,
-    title="",
-    colors=None,
-    out_path=None,
-    plot_all_points=False,
-    par_ground_truth=None,
     stats_file=None,
     verbose=False,
 ):
@@ -887,24 +876,10 @@ def corr_2d(
         order of fit, default is 'lin'
     mix : bool
         mixing of components if True
-    xlabel_arr, ylabel_arr : list of str
-        x-and y-axis labels
-    n_bin : double, optional, default=30
-        number of points onto which data are binned
-    title : str, optional, default=''
-        plot title
-    colors : array(m) of str, optional, default=None
-        line colors
     stats_file : filehandler, optional, default=None
         output file for statistics
-    out_path : str, optional, default=None
-        output file path, if not given, plot is not saved to file
-    plot_all_points : bool, optional
-        plot all individual data points if ``True``; default is ``False``
-    par_ground_truth : dict, optional
-        ground truth parameter, for plotting, default is `None`
-    verbose : bool, optional, default=False
-        verbose output if True
+    verbose : bool, optional
+        verbose output if ``True``; default is ``False``
 
     Returns
     -------
@@ -912,10 +887,6 @@ def corr_2d(
         best-fit parameters
 
     """
-    if colors is None:
-        prop_cycle = plt.rcParams["axes.prop_cycle"]
-        colors = prop_cycle.by_key()["color"]
-
     if len(y) != 2 or len(x) != 2:
         raise IndexError("Input data needs to have two components")
     if any(len(y[0]) != c for c in {len(y[1]), len(x[0]), len(x[1])}):
@@ -924,133 +895,41 @@ def corr_2d(
     # Initialise parameters of model to fit
     params = Parameters()
 
+    val_init = 0.0
+
     # Affine parameters
     for p_affine in ["a11", "a22", "c1", "c2"]:
-        params.add(p_affine, value=0.0)
+        params.add(p_affine, value=val_init)
 
     if mix:
         # Linear mixing pararmeters
-        params.add("a12", value=0.0)
-        params.add("a21", value=0.0)
+        params.add("a12", value=val_init)
+        params.add("a21", value=val_init)
 
     if order == "quad":
         # Quadratic parameters
         for p_quad in ["q111", "q222"]:
-            params.add(p_quad, value=0.0)
+            params.add(p_quad, value=val_init)
 
         if mix:
             # Quadratic mixing parameters
             for p_quad_mix in ["q112", "q122", "q212", "q211"]:
-                params.add(p_quad_mix, value=0.0)
+                params.add(p_quad_mix, value=val_init)
 
     # Mininise loss function
-    if weights is not None:
-        err = 1 / np.sqrt(weights)
-    else:
-        err = np.ones_like(y[0])
+    err = 1 / np.sqrt(weights) if weights is not None else np.ones_like(y[0])
     res = minimize(loss_bias_2d, params, args=(x, y, err, order, mix))
     if stats_file:
-        print_stats(f"2D fit order={order} mix={mix}:", stats_file, verbose=verbose)
+        print_stats(
+            f"2D fit order={order} mix={mix}:",
+            stats_file,
+            verbose=verbose,
+        )
         print_fit_report(res, file=stats_file)
     if verbose:
         print_fit_report(res)
 
-    # Get best-fit parameter values and standard deviations
-    p_dp = {}
-    for p in res.params:
-        p_dp[p] = ufloat(res.params[p].value, res.params[p].stderr)
-
-    # Get spin coefficients
-    s_ds = param_order2spin(p_dp, order, mix)
-
-    # Output to stats file
-    if stats_file:
-        for p in res.params:
-            print_stats(f"{p}={p_dp[p]:.3ugP}", stats_file, verbose=verbose)
-        for spin in s_ds:
-            print_stats(f"{spin}={s_ds[spin]:.3ugP}", stats_file, verbose=verbose)
-
-    # Plots
-
-    # Spin compoments
-    if out_path:
-        out_path_spin = f"{out_path}_spin.png"
-    else:
-        out_path_spin = None
-
-    if par_ground_truth:
-        s_ground_truth = param_order2spin(par_ground_truth, order, mix)
-    else:
-        s_ground_truth = None
-    plots.plot_bar_spin(
-        s_ds,
-        s_ground_truth=s_ground_truth,
-        output_path=out_path_spin,
-    )
-
-    # Curves
-    plots.plot_corr_2d(
-        x,
-        y,
-        weights,
-        res,
-        p_dp,
-        n_bin,
-        order,
-        mix,
-        xlabel_arr,
-        ylabel_arr,
-        plot_all_points=plot_all_points,
-        par_ground_truth=par_ground_truth,
-        title=title,
-        colors=colors,
-        out_path=out_path,
-    )
-
     return res.params
-
-
-def param_order2spin(p_dp, order, mix):
-    """Param Order 2 Spin.
-
-    Transform parameter from natural to spin coefficients.
-
-    Parameters
-    ----------
-    p_dp : dict
-        Parameter natural coefficients
-    order : str
-        expansion order, one of 'linear', 'quad'
-    mix : bool
-        ellipticity components are mixed if ``True``
-
-    Returns
-    -------
-    dict
-        Parameter spin coefficients
-
-    """
-    s_ds = {}
-
-    s_ds["x0"] = 0.5 * (p_dp["a11"] + p_dp["a22"])
-
-    if order == "quad" and mix:
-        s_ds["x2"] = 0.5 * (p_dp["q111"] + p_dp["q122"])
-        s_ds["y2"] = 0.5 * (p_dp["q211"] - p_dp["q222"])
-        s_ds["x-2"] = 0.25 * (p_dp["q111"] - p_dp["q122"] + p_dp["q212"])
-        s_ds["y-2"] = 0.25 * (p_dp["q211"] - p_dp["q222"] - p_dp["q112"])
-
-    s_ds["x4"] = 0.5 * (p_dp["a11"] - p_dp["a22"])
-
-    if mix:
-        s_ds["y4"] = 0.5 * (p_dp["a12"] + p_dp["a21"])
-        s_ds["y0"] = 0.5 * (-p_dp["a12"] + p_dp["a21"])
-
-    if order == "quad" and mix:
-        s_ds["x6"] = 0.25 * (p_dp["q111"] - p_dp["q122"] - p_dp["q212"])
-        s_ds["y6"] = 0.25 * (p_dp["q211"] - p_dp["q222"] + p_dp["q112"])
-
-    return s_ds
 
 
 def affine_corr(
@@ -1328,3 +1207,93 @@ def affine_corr_n(
     plt.tight_layout()
     plt.savefig(out_path_arr[-1])
     plt.close()
+
+
+def save_to_file(data, fname):
+    """Save To File.
+
+    Save data to .pkl (pickle) file.
+
+    Parameters
+    ----------
+    data : dict
+        input data
+    fname : str
+        output file name
+
+    See also
+    --------
+    read_from_file
+
+    """
+    with open(fname, "wb") as f:
+        pickle.dump(data, f)
+
+
+def read_from_file(fname):
+    """Read From File.
+
+    Read data from .pkl (pickle) file.
+
+    Parameters
+    ----------
+    fname : str
+        input file name
+
+    Returns
+    -------
+    dict
+        data
+
+    See also
+    --------
+    save_to_file
+
+    """
+
+    with open(fname, "rb") as f:
+        data = pickle.load(f)
+
+    return data
+
+
+def param_order2spin(p_dp, order, mix):
+    """Param Order 2 Spin.
+
+    Transform parameter from natural to spin coefficients.
+
+    Parameters
+    ----------
+    p_dp : dict
+        Parameter natural coefficients
+    order : str
+        expansion order, one of 'linear', 'quad'
+    mix : bool
+        ellipticity components are mixed if ``True``
+
+    Returns
+    -------
+    dict
+        Parameter spin coefficients
+
+    """
+    s_ds = {"x0": 0.5 * (p_dp["a11"] + p_dp["a22"])}
+
+    if order == "quad" and mix:
+        s_ds["x2"] = 0.5 * (p_dp["q111"] + p_dp["q122"])
+        s_ds["y2"] = 0.5 * (p_dp["q211"] - p_dp["q222"])
+        s_ds["x-2"] = 0.25 * (p_dp["q111"] - p_dp["q122"] + p_dp["q212"])
+        s_ds["y-2"] = 0.25 * (p_dp["q211"] - p_dp["q222"] - p_dp["q112"])
+
+    s_ds["x4"] = 0.5 * (p_dp["a11"] - p_dp["a22"])
+
+    if mix:
+        s_ds["y4"] = 0.5 * (p_dp["a12"] + p_dp["a21"])
+        s_ds["y0"] = 0.5 * (-p_dp["a12"] + p_dp["a21"])
+
+    if order == "quad" and mix:
+        s_ds["x6"] = 0.25 * (p_dp["q111"] - p_dp["q122"] - p_dp["q212"])
+        s_ds["y6"] = 0.25 * (p_dp["q211"] - p_dp["q222"] + p_dp["q112"])
+
+    return s_ds
+

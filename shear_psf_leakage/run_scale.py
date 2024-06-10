@@ -1,4 +1,4 @@
-"""RUN.
+"""RUN SCALE.
 
 This module sets up a run of the scale-dependent leakage calculations.
 
@@ -10,6 +10,8 @@ import os
 from optparse import OptionParser
 
 import numpy as np
+from scipy.interpolate import CubicSpline
+from lmfit import minimize, Parameters
 import pandas as pd
 from astropy.io import fits
 from astropy import units
@@ -20,63 +22,10 @@ from cs_util import plots
 from cs_util import calc
 from cs_util import cat as cs_cat
 from cs_util import cosmo as cs_cos
+from cs_util import args as cs_args
 
 from . import leakage
 from . import correlation as corr
-
-
-# MKDEBUG Remove (use cs_util with updated one (bool)
-def parse_options(p_def, short_options, types, help_strings):
-    """Parse command line options.
-
-    Parameters
-    ----------
-    p_def : dict
-        default parameter values
-    help_strings : dict
-        help strings for options
-
-    Returns
-    -------
-    dict
-        Command line options
-
-    """
-    usage = "%prog [OPTIONS]"
-    parser = OptionParser(usage=usage)
-
-    for key in p_def:
-        if key in help_strings:
-            if key in short_options:
-                short = short_options[key]
-            else:
-                short = ""
-
-            if key in types:
-                typ = types[key]
-            else:
-                typ = "string"
-
-            parser.add_option(
-                short,
-                f"--{key}",
-                dest=key,
-                type=typ,
-                default=p_def[key],
-                help=help_strings[key].format(p_def[key]),
-            )
-
-    parser.add_option(
-        "-v",
-        "--verbose",
-        dest="verbose",
-        action="store_true",
-        help=f"verbose output",
-    )
-
-    options, _ = parser.parse_args()
-
-    return options
 
 
 def get_theo_xi(theta, dndz_path):
@@ -209,7 +158,7 @@ class LeakageScale:
 
         """
         # Read command line options
-        options = parse_options(
+        options = cs_args.parse_options(
             self._params,
             self._short_options,
             self._types,
@@ -747,13 +696,42 @@ class LeakageScale:
         Compute weighted mean of the leakage function alpha.
 
         """
-        self.alpha_leak_mean = calc.transform_nan(
-            np.average(self.alpha_leak, weights=1 / self.sig_alpha_leak**2)
+        self.alpha_leak_mean, self.alpha_leak_std = (
+            calc.weighted_avg_and_std(
+                self.alpha_leak,
+                1/self.sig_alpha_leak**2
+            ) 
         )
+        #calc.transform_nan(
+        #    np.average(self.alpha_leak, weights=1/self.sig_alpha_leak**2)
+        #)
         leakage.print_stats(
             f"Weighted average alpha" + f" = {self.alpha_leak_mean:.3g}",
             self._stats_file,
             verbose=self._params["verbose"],
+        )
+
+    def alpha_affine_fit(self):
+        """Alpha Affine Fit.
+
+        Fit alpha(theta) with an affine model.
+
+        """
+
+        params = Parameters()
+        params.add("m", value=0.01)
+        params.add("c", value=0.01)
+        res = minimize(
+            leakage.loss_bias_lin_1d,
+            params,
+            args=(self.r_corr_gp.meanr, self.alpha_leak, self.alpha_leak_std)
+        )
+
+        # Save best-fit parameters
+        self.alpha_affine_best_fit = res.params
+        self.alpha_leak_zero = leakage.func_bias_lin_1d(
+            self.alpha_affine_best_fit,
+            0,
         )
 
     def compute_xi_sys(self):
@@ -778,7 +756,7 @@ class LeakageScale:
         self.C_sys_std_p = C_sys_std_p
         self.C_sys_std_m = C_sys_std_m
 
-    def plot_alpha_leakage(self, close_fig=True):
+    def plot_alpha_leakage(self, close_fig=True, xlinlog="log"):
         """Plot Alpha Leakage.
 
         Plot scale-dependent leakage function alpha(theta)
@@ -788,17 +766,60 @@ class LeakageScale:
         close_fig : bool, optional
             closes figure if ``True``; set this parameter to ``False`` for
             notebook display; default is ``True``
+        xlinlog : str, optional
+            if "lin" ("log"; default), creat plot linear (logarithmic) in x
 
         """
+        # Set some x-values and limits for plot
+        if xlinlog == "log":
+            x0 = self._params["theta_min_amin"]
+            x_affine = np.geomspace(x0, self._params["theta_max_amin"])
+            xlim = [x0, self._params["theta_max_amin"]]
+            xlog = True
+        else:
+            x0 = -10
+            x_affine = np.linspace(0, self._params["theta_max_amin"])
+            xlim = [x0 * 2, self._params["theta_max_amin"]]
+            xlog = False
+
+        # alpha(theta) data points
         theta = [self.r_corr_gp.meanr]
         alpha_theta = [self.alpha_leak]
         yerr = [self.sig_alpha_leak]
+
+        # mean alpha
+        theta.append([x0])
+        alpha_theta.append([self.alpha_leak_mean])
+        yerr.append([self.alpha_leak_std])
+
+        labels = [r"$\alpha(\theta)$", r"$\bar\alpha$"]
+        linewidths = [2, 2]
+
+        # affine model best fit alpha(0)
+        theta.append([x0])
+        alpha_theta.append([self.alpha_affine_best_fit["c"].value])
+        yerr.append([self.alpha_affine_best_fit["c"].stderr])
+        labels.append(r"$\alpha(0)$")
+        linewidths.append(1)
+
+        # affine model best fit alpha(theta)
+        theta.append(x_affine)
+        alpha_theta.append(
+            leakage.func_bias_lin_1d(self.alpha_affine_best_fit, x_affine)
+        )
+        # MKDEBUG TODO: error band
+        yerr.append(np.zeros_like(x_affine) * np.nan)
+        labels.append(r"$\alpha(\theta)$ affine fit")
+        linewidths.append(1)
+
         xlabel = r"$\theta$ [arcmin]"
         ylabel = r"$\alpha(\theta)$"
         title = ""
-        out_path = f"{self._params['output_dir']}" + f"/alpha_leakage.png"
-        xlim = [self._params["theta_min_amin"], self._params["theta_max_amin"]]
+        out_path = (
+            f"{self._params['output_dir']}" + f"/alpha_leakage_{xlinlog}.png"
+        )
         ylim = self._params["leakage_alpha_ylim"]
+
         plots.plot_data_1d(
             theta,
             alpha_theta,
@@ -807,10 +828,13 @@ class LeakageScale:
             xlabel,
             ylabel,
             out_path,
-            xlog=True,
+            xlog=xlog,
             xlim=xlim,
             ylim=ylim,
+            labels=labels,
+            linewidths=linewidths,
             close_fig=close_fig,
+            shift_x=False,
         )
 
     def plot_alpha_leakage_matrix(self):
@@ -1006,9 +1030,11 @@ class LeakageScale:
             fast=fast,
         )
         self.compute_alpha_mean()
+        self.alpha_affine_fit()
 
         # Plot
-        self.plot_alpha_leakage()
+        for xlinlog in ["lin", "log"]:
+            self.plot_alpha_leakage(xlinlog=xlinlog)
 
         # Write to disk
         self.save_alpha()
@@ -1211,51 +1237,6 @@ class LeakageScale:
                 names.append(rf"sigma_alpha_{{{idx+1}{jdx+1}}}")
         fname = f"{self._params['output_dir']}/alpha_leakage_matrix.txt"
         cs_cat.write_ascii_table_file(cols, names, fname)
-
-
-def var_sum(s2a, s2b):
-    """Var Sum.
-
-    Return variance of a + b.
-
-    """
-    s2 = s2a + s2b
-
-    return s2
-
-def var_mult_div(y, a, b, s2a, s2b):
-    """Var Mult Div.
-
-    Return variance of y = a * b or y = a / b.
-
-    """
-    s2 = y ** 2 * (s2a / a ** 2 + s2b / b ** 2)
-
-    return s2
-
-def var_product(a, b, s2a, s2b):
-    """Var Product.
-
-    Return variance of y = a * b.
-
-    """
-    y = a * b
-
-    s2 = var_mult_div(y, a, b, s2a, s2b)
-
-    return s2
-
-def var_ratio(a, b, s2a, s2b):
-    """Var Ratio.
-
-    Return variance of y = a / b.
-
-    """
-    y = a / b
-
-    s2 = var_mult_div(y, a, b, s2a, s2b)
-
-    return s2
 
 
 def run_leakage_scale(*args):

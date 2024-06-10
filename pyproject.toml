@@ -1,16 +1,16 @@
 [tool.poetry]
 name = "shear_psf_leakage"
-version = "0.1.6"
+version = "0.2"
 description = "PSF leakage for shear catalogue data"
 authors = [
 	"Martin Kilbinger <martin.kilbinger@cea.fr>",
+	"Sacha Guerrini <sacha.guerrini@cea.fr>",
 	"Clara Bonini <clara.bonini@universite-paris-saclay.fr>",
 ]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<3.12"
-cmake = "^3.27.2"
 swig = "^4.1.1"
 pyyaml = "^6.0.1"
 lmfit = "^1.2.2"
@@ -24,13 +24,16 @@ pandas = "^2.0.3"
 camb = "^1.5.0"
 
 scipy = "^1.11.3"
-cs-util = "0.0.6"
 
 notebook = "5.7.4"
 jupyter-server = "^2.8.0"
 jupyterlab = "^4.0.7"
 tornado = "^6.3.3"
 lenspack = "^1.0.0"
+getdist = "^1.4.7"
+tqdm = "^4.66.2"
+emcee = "^3.1.4"
+gsl = "^0.0.3"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.5"

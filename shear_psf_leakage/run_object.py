@@ -7,146 +7,10 @@ from lmfit import Parameters
 from optparse import OptionParser
 
 from cs_util import logging
+from cs_util import args as cs_args
 
 from . import leakage
-
-
-# MKDEBUG TODO: to cs_util. Also check shapepipe.
-def my_string_split(string, num=-1, verbose=False, stop=False, sep=None):
-    """My String Split.
-
-    Split a *string* into a list of strings. Choose as separator
-    the first in the list [space, underscore] that occurs in the string.
-    (Thus, if both occur, use space.)
-
-    Parameters
-    ----------
-    string : str
-        Input string
-    num : int
-        Required length of output list of strings, -1 if no requirement.
-    verbose : bool
-        Verbose output
-    stop : bool
-        Stop programs with error if True, return None and continues otherwise
-    sep : bool
-        Separator, try ' ', '_', and '.' if None (default)
-
-    Raises
-    ------
-    CfisError
-        If number of elements in string and num are different, for stop=True
-    ValueError
-        If no separator found in string
-
-    Returns
-    -------
-    list
-        List of string on success, and None if failed
-
-    """
-    if string is None:
-        return None
-
-    if sep is None:
-        has_space = string.find(" ")
-        has_underscore = string.find("_")
-        has_dot = string.find(".")
-
-        if has_space != -1:
-            my_sep = " "
-        elif has_underscore != -1:
-            my_sep = "_"
-        elif has_dot != -1:
-            my_sep = "."
-        else:
-            # no separator found, does string consist of only one element?
-            if num == -1 or num == 1:
-                my_sep = None
-            else:
-                raise Valueerror(
-                    "No separator (' ', '_', or '.') found in string"
-                    + f" '{string}', cannot split"
-                )
-    else:
-        if not string.find(sep):
-            raise ValueError(
-                f"No separator '{sep}' found in string '{string}', " + "cannot split"
-            )
-        my_sep = sep
-
-    res = string.split(my_sep)
-
-    if num != -1 and num != len(res) and stop:
-        raise CfisError(f"String '{len(res)}' has length {num}, required is {num}")
-
-    return res
-
-
-# MKDEBUG to cs_util
-def parse_options(p_def, short_options, types, help_strings):
-    """Parse Options.
-
-    Parse command line options.
-
-    Parameters
-    ----------
-    p_def : dict
-        default parameter values
-    help_strings : dict
-        help strings for options
-
-    Returns
-    -------
-    options: tuple
-        Command line options
-    """
-
-    usage = "%prog [OPTIONS]"
-    parser = OptionParser(usage=usage)
-
-    for key in p_def:
-        if key in help_strings:
-            if key in short_options:
-                short = short_options[key]
-            else:
-                short = ""
-
-            if key in types:
-                typ = types[key]
-            else:
-                typ = "string"
-
-            if typ == "bool":
-                parser.add_option(
-                    f"{short}",
-                    f"--{key}",
-                    dest=key,
-                    default=False,
-                    action="store_true",
-                    help=help_strings[key].format(p_def[key]),
-                )
-            else:
-                parser.add_option(
-                    f"{short}",
-                    f"--{key}",
-                    dest=key,
-                    type=typ,
-                    default=p_def[key],
-                    help=help_strings[key].format(p_def[key]),
-                )
-
-    parser.add_option(
-        "-v",
-        "--verbose",
-        dest="verbose",
-        action="store_true",
-        help=f"verbose output",
-    )
-
-    options, args = parser.parse_args()
-
-    return options
+from . import plots
 
 
 class LeakageObject:
@@ -168,18 +32,13 @@ class LeakageObject:
 
         """
         # Read command line options
-        options = parse_options(
+        options = cs_args.parse_options(
             self._params,
             self._short_options,
             self._types,
             self._help_strings,
         )
-
-        # Update parameter values from options
-        for key in vars(options):
-            self._params[key] = getattr(options, key)
-
-        # del options ?
+        self._params = options
 
         # Save calling command
         logging.log_command(args)
@@ -190,7 +49,6 @@ class LeakageObject:
         Set default parameter values.
 
         """
-        # MKDEBUG TODO: test -> action=store_true
         self._params = {
             "input_path_shear": None,
             "output_dir": ".",
@@ -280,13 +138,13 @@ class LeakageObject:
 
         """
         if self._params["cols"]:
-            self._params["cols"] = my_string_split(
+            self._params["cols"] = cs_args.my_string_split(
                 self._params["cols"],
                 verbose=self._params["verbose"],
                 stop=True,
             )
         if self._params["cols_ratio"]:
-            self._params["cols_ratio"] = my_string_split(
+            self._params["cols_ratio"] = cs_args.my_string_split(
                 self._params["cols_ratio"],
                 num=2,
                 verbose=self._params["verbose"],
@@ -456,32 +314,51 @@ class LeakageObject:
             p_gt.add(par, value=pars_gt[par])
 
         # Ground-truth 2D (y_1, y_2) data
-        y1, y2 = leakage.func_bias_2d(p_gt, x_arr[0], x_arr[1], order="quad", mix=True)
+        y1, y2 = leakage.func_bias_2d(
+            p_gt,
+            x_arr[0],
+            x_arr[1],
+            order="quad",
+            mix=True
+        )
 
         # Perturbation
         dy1 = np.random.normal(scale=sig_x, size=size)
         dy2 = np.random.normal(scale=sig_x, size=size)
 
-        # Perform fits
         for order in ["lin", "quad"]:
             for mix in [False, True]:
-                out_path = f"{self._params['output_dir']}/test_{order}_{mix}"
-                leakage.corr_2d(
+                # Carry out fits
+                self.par_best_fit = leakage.corr_2d(
                     x_arr,
                     [y1 + dy1, y2 + dy2],
-                    xlabel_arr=xlabel_arr,
-                    ylabel_arr=ylabel_arr,
                     order=order,
                     mix=mix,
-                    title=f"test {order} {mix}",
+                    stats_file=self._stats_file,
+                    verbose=self._params["verbose"],
+                )
+                
+                # Create plots
+                out_base = f"{self._params['output_dir']}/test_{order}_{mix}"
+                plots.plots_all_corr_2d(
+                    self.par_best_fit,
+                    x_arr[:2],
+                    [y1 + dy1, y2 + dy2],
+                    xlabel_arr=xlabel_arr[:2],
+                    ylabel_arr=ylabel_arr,
+                    title="",
                     n_bin=n_bin,
-                    out_path=out_path,
+                    order=order,
+                    mix=mix,
+                    out_base=out_base,
                     colors=colors,
                     plot_all_points=True,
                     par_ground_truth=p_gt,
                     stats_file=self._stats_file,
                     verbose=self._params["verbose"],
-                )
+        )
+
+
 
         print("Ground truth:")
         for par in p_gt:
@@ -500,21 +377,39 @@ class LeakageObject:
 
         return e, weights
 
-    def PSF_leakage(self):
+    def get_out_base(self, mix, order):
+        """Get Out Base.
+
+        Return output file base name.
+
+        """
+        return (
+            f"{self._params['output_dir']}"
+            + f"/PSF_e_vs_e_gal_order-{order}_mix-{mix}"
+        )
+
+    def PSF_leakage(self, mix=True, order="lin"):
         """PSF Leakage.
 
         Compute and plot object-by-object PSF spin-consistent leakage relations.
+
+        Parameters
+        ----------
+        mix : bool, optional
+            Component mixing (spin-consistent); default is ``True``
+        order : str, optional
+            regression order; allowed are "lin" (default) and "quad"
 
         """
         # Set options for plotting
         n_bin = 30
         colors = ["b", "r"]
-        ylabel_arr = [r"$e_1^{\rm gal}$", r"$e_2^{\rm gal}$"]
+        ylabel_arr = [r"$e_1^{\rm g}$", r"$e_2^{\rm g}$"]
 
         xlabel_arr = [
-            r"$e_{1}^{\rm PSF}$",
-            r"$e_{2}^{\rm PSF}$",
-            r"$\mathrm{FWHM}^{\rm PSF}$ [arcsec]",
+            r"$e_{1}^{\rm p}$",
+            r"$e_{2}^{\rm p}$",
+            r"$\mathrm{FWHM}^{\rm p}$ [arcsec]",
         ]
 
         e, weights = self.get_ellipticity_weights()
@@ -531,31 +426,46 @@ class LeakageObject:
         ]
 
         # Fit consistent spin-2 2D model
-        mix = True
-        for order in ["lin", "quad"]:
-            out_path = (
-                f"{self._params['output_dir']}"
-                + f"/PSF_e_vs_e_gal_order-{order}_mix-{mix}"
-            )
-            par_best_fit = leakage.corr_2d(
+        out_base = self.get_out_base(mix, order)
+        out_path = f"{out_base}.pkl"
+        if not os.path.exists(out_path):
+            if self._params["verbose"]:
+                print("Computing best-fit parameters")
+            self.par_best_fit = leakage.corr_2d(
                 x_arr[:2],
                 e,
                 weights=weights,
-                xlabel_arr=xlabel_arr[:2],
-                ylabel_arr=ylabel_arr,
                 order=order,
                 mix=mix,
-                title="",
-                n_bin=n_bin,
-                out_path=out_path,
-                colors=colors,
                 stats_file=self._stats_file,
                 verbose=self._params["verbose"],
             )
-            fp_best_fit = open(f"{out_path}.json", "w")
-            par_best_fit.dump(fp_best_fit)
+            leakage.save_to_file(self.par_best_fit, out_path)
+        else:
+            if self._params["verbose"]:
+                print(f"Reading best-fit parameters from file {out_path}")
+            self.par_best_fit = leakage.read_from_file(out_path)
 
-        # Fit separate 1D models, including size
+        plots.plots_all_corr_2d(
+            self.par_best_fit,
+            x_arr[:2],
+            e,
+            weights=weights,
+            xlabel_arr=xlabel_arr[:2],
+            ylabel_arr=ylabel_arr,
+            title="",
+            n_bin=n_bin,
+            order=order,
+            mix=mix,
+            out_base=out_base,
+            colors=colors,
+            stats_file=self._stats_file,
+            verbose=self._params["verbose"],
+        )
+
+        # Fit separate 1D models
+        # MKDEBUG TODO: put in separate class function
+
         ylabel = r"$e_{1,2}^{\rm gal}$"
         mlabel = [r"\alpha_1", r"\alpha_2"]
         clabel = ["c_1", "c_2"]
@@ -610,8 +520,17 @@ class LeakageObject:
             )
         self.corr_any_quant(label_quant, ratio=self._params["cols_ratio"])
 
-    def run(self):
+    def run(self, mix=None, order=None):
         """Run.
+
+        Parameters
+        ----------
+        mix : list, optional
+            list of bool; True (False) means with (without) component mixing;
+            default is `None` in which case both options will be run
+        order : list, optional
+            list of str; allowed are "lin" (linear fit) and "quad" (quadratic
+            fit); default is `None` in which case both options will be run
 
         Main processing of scale-dependent leakage.
 
@@ -637,7 +556,22 @@ class LeakageObject:
 
             if obj._params["PSF_leakage"]:
                 # Object-by-object spin-consistent PSF leakage
-                obj.PSF_leakage()
+
+                # Set mix and order to default if not provided
+                if mix is None:
+                    mix = ["lin", "quad"]
+                if order is None:
+                    order = [True, False]
+
+                # Make sure mix and order are lists
+                if not isinstance(mix, list):
+                    mix = [mix]
+                if not isinstance(order, list):
+                    order = [order]
+
+                for my_order in order:
+                    for my_mix in mix:
+                        obj.PSF_leakage(mix=my_mix, order=my_order)
 
             if obj._params["obs_leakage"]:
                 # Object-by-object dependence of general variables

@@ -15,71 +15,23 @@
 
 # # PSF leakage: object-wise estimation
 #
-# Demonstration notebook of shear_psf_leakage.run_object.LeakageObject() class.
+# Demonstration notebook of shear_psf_leakage.run_object.LeakageObject class.
 #
 # Martin Kilbinger <martin.kilbinger@cea.fr>
 
 # +
-import os
+import matplotlib
+matplotlib.use("agg")
+
+import os, sys
 import matplotlib.pylab as plt
 
 from cs_util import canfar
+from cs_util import args
 
 import shear_psf_leakage.run_object as run
+from shear_psf_leakage import leakage
 
-# -
-
-# ## Set input parameters
-
-params_in = {}
-
-# ### Paths
-
-# +
-# Patch name
-patch = "W3"
-# Input galaxy shear catalogue
-params_in["input_path_shear"] = f"unions_shapepipe_extended_2022_{patch}_v1.0.3.fits"
-
-# Output directory
-params_in["output_dir"] = "leakage_object"
-# -
-
-# ### Job control
-
-# +
-# Compute (spin-preserving) PSF ellipticity leakage
-params_in["PSF_leakage"] = True
-
-# Compute leakage with other parameters
-params_in["obs_leakage"] = True
-
-# Other input parameters
-params_in["cols"] = "RA Dec e1_PSF e2_PSF fwhm_PSF w mag snr"
-
-# Ratio between two input columns
-params_in["cols_ratio"] = "mag_snr"
-# -
-
-# ### Other parameters
-
-# +
-# PSF ellipticity column names
-params_in["e1_PSF_col"] = "e1_PSF"
-params_in["e2_PSF_col"] = "e2_PSF"
-
-# Set verbose output
-params_in["verbose"] = True
-# -
-
-# ### Retrieve test catalogue from VOspace if not yet downloaded
-
-vos_dir = f"vos:cfis/weak_lensing/DataReleases/v1.0/ShapePipe/{patch}"
-canfar.download(
-    f"{vos_dir}/{params_in['input_path_shear']}",
-    params_in["input_path_shear"],
-    verbose=params_in["verbose"],
-)
 
 # ## Compute leakage
 
@@ -87,11 +39,24 @@ canfar.download(
 obj = run.LeakageObject()
 
 # Set instance parameters, copy from above
-for key in params_in:
-    obj._params[key] = params_in[key]
+params_upd = args.read_param_script("params_object.py", obj._params, verbose=True)
+for key in params_upd:
+    obj._params[key] = params_upd[key]
+
+#for key in obj._params:
+    #print(key, obj._params[key])
+
+# +
+#vos_dir = f"vos:cfis/weak_lensing/DataReleases/v1.0/ShapePipe/{patch}"
+#canfar.download(
+    #f"{vos_dir}/{obj_params['input_path_shear']}",
+    #obj._params["input_path_shear"],
+    #verbose=obj._params["verbose"],
+#)
+# -
 
 # ### Run
-# There are two options to run the leakage compuations:
+# There are two options to run the leakage computations:
 # 1. Run all at once with single class routine.
 # 2. Execute individual steps.
 
@@ -118,7 +83,8 @@ obj.read_data()
 
 if obj._params["PSF_leakage"]:
     # Object-by-object spin-consistent PSF leakage
-    obj.PSF_leakage()
+    for order in ("lin", "quad"):
+            obj.PSF_leakage(mix=True, order=order)
 
 if obj._params["obs_leakage"]:
     # Object-by-object spin-consistent PSF leakage

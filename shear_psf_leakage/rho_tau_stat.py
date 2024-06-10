@@ -299,7 +299,10 @@ class Catalogs():
             dec = self.dat_shear[self._params["dec_col"]]
             g1 = self.dat_shear[self._params["e1_col"]] - np.average(self.dat_shear[self._params["e1_col"]], weights=weights)
             g2 = self.dat_shear[self._params["e2_col"]] - np.average(self.dat_shear[self._params["e2_col"]], weights=weights)
-
+            if self._params.get("R11", None) is not None:
+                g1 /= self._params["R11"]
+            if self._params.get("R22", None) is not None:
+                g2 /= self._params["R22"]
         else:
             assert self.dat_psf is not None, ("Check you read the shear catalogs correctly.")
             #Add a mask?
@@ -321,9 +324,10 @@ class Catalogs():
             else:
                 size_star = self.dat_psf[self._params["star_size"]]**2 if square_size else  self.dat_psf[self._params["star_size"]]
                 size_psf = self.dat_psf[self._params["PSF_size"]]**2 if square_size else  self.dat_psf[self._params["PSF_size"]]
-                g1 = self.dat_psf[self._params["e1_star_col"]] * (size_star - size_psf)/size_star
+
+                g1 = self.dat_psf[self._params["e1_star_col"]] * (size_star - size_psf) / size_star
                 #g1 -= g1.mean()
-                g2 = self.dat_psf[self._params["e2_star_col"]] * (size_star - size_psf)/size_star
+                g2 = self.dat_psf[self._params["e2_star_col"]] * (size_star - size_psf) / size_star
                 #g2 -= g2.mean()
 
         return ra, dec, g1, g2, weights
@@ -482,6 +486,9 @@ class RhoStat():
 
         mask : bool
             If True, use PSF and star flags to mask the data. (Default: False)
+
+        hdu : int, optional
+            HDU number of input FITS file, default is 1
         """
 
         self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat_star, hdu=hdu)
@@ -723,6 +730,9 @@ class TauStat():
 
         mask : bool
             If True, use PSF and star flags to mask the data. (Default: False)
+
+        hdu : int, optional
+            HDU number of input FITS file, default is 1
         """
 
         if cat_type=="psf":
@@ -737,7 +747,7 @@ class TauStat():
             self.catalogs.build_catalog(cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
 
         else:
-            self.catalogs.read_shear_cat(path_gal=path_cat, path_psf=None)
+            self.catalogs.read_shear_cat(path_gal=path_cat, path_psf=None, hdu=hdu)
 
             if self.verbose:
                 print("Building catalog...")
@@ -1503,7 +1513,21 @@ class PSFErrorFit():
         fig, ax = self.tau_stat_handler.plot_tau_stats([filename], [color], [catalog_id], plot_tau_m=False)
 
         assert (self.rho_stat_handler.rho_stats is not None), ("Please load rho statistics data.") #Check if data was loaded
-        assert (np.all(self.rho_stat_handler.rho_stats["theta"] == self.tau_stat_handler.tau_stats["theta"])), ("The rho and tau statistics have not the same angular scales. Check that they come from the same catalog with the same treecorr config.")
+
+        scales_diff_ratio = np.abs(
+            (self.rho_stat_handler.rho_stats["theta"] -
+             self.tau_stat_handler.tau_stats["theta"]
+            ) / self.tau_stat_handler.tau_stats["theta"]
+        )
+        if np.any(scales_diff_ratio > 0.001):
+            print("theta for rho: ", self.rho_stat_handler.rho_stats["theta"])
+            print("theta for tau: ", self.tau_stat_handler.tau_stats["theta"])
+            print(scales_diff_ratio, max(scales_diff_ratio))
+            raise ValueError(
+                "The rho and tau statistics have not the same angular scales: "
+                + " Check that they come from the same catalog with the same"
+                + " treecorr config."
+            )
 
         taus = self.model(theta).reshape(3, -1)
 

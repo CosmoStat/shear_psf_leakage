@@ -3,8 +3,8 @@ sys.path.append('../shear_psf_leakage')
 
 import numpy as np
 import matplotlib.pyplot as plt
-from rho_tau_stat import RhoStat, TauStat, PSFErrorFit
-from plots import plot_contours
+from shear_psf_leakage.rho_tau_stat import RhoStat, TauStat, PSFErrorFit
+from shear_psf_leakage.plots import plot_contours
 
 
 #Run tests on shapepipe V1 and DESY3

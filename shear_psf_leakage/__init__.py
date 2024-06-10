@@ -1,1 +1,4 @@
-__version__ = "0.1.6"
+from importlib.metadata import version
+
+__version__ = version("shear_psf_leakage")
+

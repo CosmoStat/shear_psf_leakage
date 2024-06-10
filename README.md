@@ -25,6 +25,8 @@ Alternatively, you can use TBD
 
 Martin Kilbinger <martin.kilbinger@cea.fr>
 
-Clara Bonini <mail>
+Clara Bonini
 
-Axel Guinot <mail>
+Sacha Guerrini
+
+Axel Guinot
