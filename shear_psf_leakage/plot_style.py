@@ -17,7 +17,7 @@ import matplotlib.pylab as plt
 mpl.rcParams["lines.linewidth"] = 2
 mpl.rcParams["lines.markersize"] = 10
 
-font_size = 16
+font_size = 18
 mpl.rcParams["font.size"] = font_size
 mpl.rcParams["xtick.labelsize"] = font_size
 mpl.rcParams["ytick.labelsize"] = font_size

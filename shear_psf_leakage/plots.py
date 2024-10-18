@@ -12,8 +12,11 @@
 import numpy as np
 from scipy import stats
 from matplotlib import pylab as plt
+from uncertainties import ufloat
+import getdist
+from getdist import plots, MCSamples
 
-from shear_psf_leakage import leakage
+from . import leakage
 
 
 def equi_num_bins(values, n_bin):
@@ -35,11 +38,11 @@ def equi_num_bins(values, n_bin):
         equi-numbered bin array
 
     """
-    xeqn = np.interp(
-        np.linspace(0, len(values), n_bin + 1), np.arange(len(values)), np.sort(values)
+    return np.interp(
+        np.linspace(0, len(values), n_bin + 1),
+        np.arange(len(values)),
+        np.sort(values),
     )
-
-    return xeqn
 
 
 def compute_bins_func_2d(x, y, n_bin, mix, weights=None):
@@ -125,10 +128,18 @@ def compute_bins_func_2d(x, y, n_bin, mix, weights=None):
     return x_bin, y_bin, err_bin
 
 
-def set_labels(p_dp, order, mix):
-    """Set Label.
+def get_bias(p_dp, par_ground_truth, key):
 
-    Set labels for plot of 2D fit
+    return (
+        (p_dp[key].nominal_value - par_ground_truth[key].value)
+        / p_dp[key].std_dev
+    )
+    
+
+def set_labels(p_dp, order, mix, par_ground_truth=None):
+    """Set Labels.
+
+    Set labels for plot of 2D fit.
 
     Parameters
     ----------
@@ -141,38 +152,71 @@ def set_labels(p_dp, order, mix):
 
     Returns
     -------
-    dict :
+    dict
         label strings
 
     """
     # Affine parameters
     label = {
-        "A": (f'$a_{{11}}={p_dp["a11"]: .2ugL}$' + "\n" + f'$c_1={p_dp["c1"]: .2ugL}$'),
-        "D": (f'$a_{{22}}={p_dp["a22"]: .2ugL}$' + "\n" + f'$c_2={p_dp["c2"]: .2ugL}$'),
+        "A": rf'$\alpha_{{11}}\;\,={p_dp["a11"]: .2ugL}$',
+        "D": rf'$\alpha_{{22}}\;\,={p_dp["a22"]: .2ugL}$',
     }
+
+    if par_ground_truth:
+        bias = get_bias(p_dp, par_ground_truth, "a11")
+        label["A"] = f"{label['A']} ({par_ground_truth['a11'].value}, {bias:.1f}$\sigma$)"
+        bias = get_bias(p_dp, par_ground_truth, "a22")
+        label["D"] = f"{label['D']} ({par_ground_truth['a22'].value}, {bias:.1f}$\sigma$)"
+
+    # Constant parameters
+    label["A"] = label["A"] + "\n" + f'$c_1\;\;\;={p_dp["c1"]: .2ugL}$'
+    label["D"] = label["D"] + "\n" + f'$c_2\;\;\;={p_dp["c2"]: .2ugL}$'
+    if par_ground_truth:
+        bias = get_bias(p_dp, par_ground_truth, "c1")
+        label["A"] = f"{label['A']} ({par_ground_truth['c1'].value}, {bias:.1f}$\sigma$)"
+        bias = get_bias(p_dp, par_ground_truth, "c2")
+        label["D"] = f"{label['D']} ({par_ground_truth['c2'].value}, {bias:.1f}$\sigma$)"
+
     if order == "quad":
         # Add quadratic parameters
-        label["A"] = f'$q_{{111}}={p_dp["q111"]: .2ugL}$' + "\n" + label["A"]
-        label["D"] = f'$q_{{222}}={p_dp["q222"]: .2ugL}$' + "\n" + label["D"]
+        label_q111 = f'$q_{{111}}={p_dp["q111"]: .2ugL}$'
+        label_q222 = f'$q_{{222}}={p_dp["q222"]: .2ugL}$'
+        if par_ground_truth:
+            bias = get_bias(p_dp, par_ground_truth, "q111")
+            label_q111 = f"{label_q111} ({par_ground_truth['q111'].value}, {bias:.1f}$\sigma$)"
+            bias = get_bias(p_dp, par_ground_truth, "q222")
+            label_q222 = f"{label_q222} ({par_ground_truth['q222'].value}, {bias:.1f}$\sigma$)"
+        label["A"] = label_q111 + "\n" + label["A"]
+        label["D"] = label_q222 + "\n" + label["D"]
     if mix:
-        # Add mixture parameters
-        label["B"] = f'$a_{{12}}={p_dp["a12"]: .2ugL}$'
-        label["C"] = f'$a_{{12}}={p_dp["a12"]: .2ugL}$'
+        # Mixed linear parameters
+        label["B"] = rf'$\alpha_{{12}}\;\,={p_dp["a12"]: .2ugL}$'
+        label["C"] = rf'$\alpha_{{21}}\;\,={p_dp["a21"]: .2ugL}$'
+        if par_ground_truth:
+            bias = get_bias(p_dp, par_ground_truth, "a12")
+            label["B"] = f"{label['B']} ({par_ground_truth['a12'].value}, {bias:.1f}$\sigma$)"
+            bias = get_bias(p_dp, par_ground_truth, "a21")
+            label["C"] = f"{label['C']} ({par_ground_truth['a21'].value}, {bias:.1f}$\sigma$)"
+
+        # Mixed quadratic parameters
         if order == "quad":
-            label["B"] = (
-                f'$q_{{211}}={p_dp["q211"]: .2ugL}$'
-                + "\n"
-                + f'$q_{{212}}={p_dp["q212"]: .2ugL}$'
-                + "\n"
-                + label["B"]
-            )
-            label["C"] = (
-                f'$q_{{122}}={p_dp["q122"]: .2ugL}$'
-                + "\n"
-                + f'$q_{{112}}={p_dp["q112"]: .2ugL}$'
-                + "\n"
-                + label["C"]
-            )
+            label_q211 = f'$q_{{211}}={p_dp["q211"]: .2ugL}$'
+            label_q212 = f'$q_{{212}}={p_dp["q212"]: .2ugL}$'
+            label_q122 = f'$q_{{122}}={p_dp["q122"]: .2ugL}$'
+            label_q112 = f'$q_{{112}}={p_dp["q112"]: .2ugL}$'
+
+            if par_ground_truth:
+                bias = get_bias(p_dp, par_ground_truth, "q211")
+                label_q211 = f"{label_q211} ({par_ground_truth['q211'].value}, {bias:.1f}$\sigma$)"
+                bias = get_bias(p_dp, par_ground_truth, "q212")
+                label_q212 = f"{label_q212} ({par_ground_truth['q212'].value}, {bias:.1f}$\sigma$)"
+                bias = get_bias(p_dp, par_ground_truth, "q122")
+                label_q122 = f"{label_q122} ({par_ground_truth['q122'].value}, {bias:.1f}$\sigma$)"
+                bias = get_bias(p_dp, par_ground_truth, "q112")
+                label_q112 = f"{label_q112} ({par_ground_truth['q112'].value}, {bias:.1f}$\sigma$)"
+
+            label["B"] = label_q211 + "\n" + label_q212 + "\n" + label["B"]
+            label["C"] = label_q122 + "\n" + label_q112 + "\n" + label["C"]
 
     return label
 
@@ -228,12 +272,12 @@ def plot_bar_spin(par, s_ground_truth, output_path=None):
         alpha=0.5,
         ecolor="black",
         capsize=8,
-        width=0.8,
+        width=0.7,
         color=col,
     )
     xlim = ax.get_xlim()
     ax.plot(xlim, [0, 0], "k-")
-    ax.set_ylabel(r"$z_s = x_s + \mathrm{i} y_s$")
+    ax.set_ylabel(r"$\alpha_s^\Re, \alpha_s^\Im$")
     xl = list(s)
     ax.set_xticks(xl)
     ax.set_xlabel("$s$")
@@ -267,17 +311,18 @@ def plot_corr_2d(
     x,
     y,
     weights,
-    res,
+    res_params,
     p_dp,
     n_bin,
     order,
     mix,
     xlabel_arr,
     ylabel_arr,
-    y_ground_truth=None,
+    plot_all_points=False,
+    par_ground_truth=None,
     title=None,
     colors=None,
-    out_path=None,
+    out_base=None,
 ):
     """Plot Corr 2D.
 
@@ -291,24 +336,28 @@ def plot_corr_2d(
         input y arrays
     weights  : array of double, optional, default=None
         weights of x points
-    res : class lmfit.MinimizerResult
-        results of the minization
+    res_params : dict
+        results of the minimization
     n_bin : double, optional, default=30
         number of points onto which data are binned
+    p_dp : dict
+        Best-fit and std of input parameter
     order : str
         order of fit
     mix : bool
-        mixing of components if True
+        mixing of components if ``True``
     xlabel_arr, ylabel_arr : list of str
         x-and y-axis labels
-    y_ground_truth : 2D np.array, optional
-        ground truth model values (y1, y2) for plotting, default is `None`
+    plot_all_points : bool, optional
+        plot all individual data points if ``True``; default is ``False``
+    par_ground_truth : 2D np.array, optional
+        ground truth model values (y1, y2) for plotting, default is ``None``
     title : string, optional, default=''
         plot title
     colors : array(m) of string, optional, default=None
         line colors
-    out_path : str, optional, default=None
-        output file path, if not given, plot is not saved to file
+    out_base:: str, optional, default=None
+        output file path base, if not given, plot is not saved to file
 
     """
     if colors is None:
@@ -316,7 +365,9 @@ def plot_corr_2d(
         colors = prop_cycle.by_key()["color"]
 
     # Compute binned data for pretty plotting.
-    x_bin, y_bin, err_bin = compute_bins_func_2d(x, y, n_bin, mix, weights=weights)
+    x_bin, y_bin, err_bin = compute_bins_func_2d(
+        x, y, n_bin, mix, weights=weights
+    )
 
     # Initialise mosaic figure
     figure_mosaic = """
@@ -328,8 +379,16 @@ def plot_corr_2d(
     # Get best-fit model on 2D binned grid
     y_model_all = np.zeros(shape=(2, n_bin, n_bin))
     y_model_all[0], y_model_all[1] = leakage.func_bias_2d_full(
-        res.params, x_bin[0], x_bin[1], order=order, mix=mix
+        res_params, x_bin[0], x_bin[1], order=order, mix=mix
     )
+
+    if par_ground_truth:
+        y_gt_all = np.zeros(shape=(2, n_bin, n_bin))
+        y_gt_mean = np.zeros(shape=(2, n_bin))
+        y_gt_all[0], y_gt_all[1] = leakage.func_bias_2d_full(
+            par_ground_truth, x_bin[0], x_bin[1], order=order, mix=mix
+        )
+
     # Compute means and standard deviations
     y_model_mean = np.zeros(shape=(2, n_bin))
     y_model_upper = np.zeros(shape=(2, n_bin))
@@ -339,6 +398,9 @@ def plot_corr_2d(
         std = y_model_all[comp].std(axis=ax)
         y_model_upper[comp] = y_model_mean[comp] + std
         y_model_lower[comp] = y_model_mean[comp] - std
+
+        if par_ground_truth:
+            y_gt_mean[comp] = y_gt_all[comp].mean(axis=ax)
 
     # Set up quantities to plot in each panel
     xb = {}
@@ -352,6 +414,8 @@ def plot_corr_2d(
     col = {}
     xl = {}
     yl = {}
+    yall = {}
+    xall = {}
 
     # Set component for each panel.
     # x: 0 in A, B; 1 in C, D
@@ -380,12 +444,16 @@ def plot_corr_2d(
         dy[p] = err_bin[panel_comp_y[p]][panel_comp_x[p]]
         col[p] = colors[panel_comp_y[p]]
 
-        if y_ground_truth:
-            xgt[p] = x[panel_comp_x[p]]
-            ygt[p] = y_ground_truth[panel_comp_y[p]]
+        if par_ground_truth:
+            xgt[p] = x_bin[panel_comp_x[p]]
+            ygt[p] = y_gt_mean[panel_comp_y[p]]
+
+        if plot_all_points:
+            xall[p] = x[panel_comp_x[p]]
+            yall[p] = y[panel_comp_y[p]]
 
     # Set plot labels to parameter best-fit + std
-    label = set_labels(p_dp, order, mix)
+    label = set_labels(p_dp, order, mix, par_ground_truth=par_ground_truth)
 
     # Loop over panels
     for p in axes:
@@ -399,9 +467,12 @@ def plot_corr_2d(
             xb[p], ymu[p], yml[p], color=col[p], interpolate=True, alpha=0.3
         )
 
-        # Plot ground-truth model if provided
-        if y_ground_truth:
-            axes[p].plot(xgt[p], ygt[p], ".", c="k", markersize=0.4)
+        # Plot ground-truth binned mean if provided
+        if par_ground_truth:
+            axes[p].plot(xgt[p], ygt[p], ":", c=col[p])
+
+        if plot_all_points:
+            axes[p].plot(xall[p], yall[p], ".", c="k", markersize=0.4)
 
         # Plot binned data with error bars
         axes[p].errorbar(xb[p], yd[p], yerr=dy[p], c=col[p], fmt=".")
@@ -416,5 +487,129 @@ def plot_corr_2d(
     plt.tight_layout()
 
     # Save figure
-    if out_path:
-        plt.savefig(f"{out_path}.png", bbox_inches="tight")
+    if out_base:
+        plt.savefig(f"{out_base}.png", bbox_inches="tight")
+
+def plot_contours(sample_list, names, labels, savefig=None, **kwargs):
+    """
+    plot_contours
+
+    Plot a corner plot with getdist for given samples.
+
+    Parameters
+    ----------
+    sample_list : list
+        A list containing np.array with samples in each entry.
+    names : list str
+        Names of the variable (See getdist documentation)
+    labels : list str
+        Labels of the parameters
+    """
+    sample_list = [MCSamples(samples=samps, names=names, labels=labels) for samps in sample_list]
+    g = plots.get_subplot_plotter()
+    g.triangle_plot(sample_list, filled=True, **kwargs)
+
+    if savefig is not None:
+        plt.savefig(savefig)
+
+
+def plots_all_corr_2d(
+    res_params,
+    x,
+    y,
+    xlabel_arr,
+    ylabel_arr,
+    weights=None,
+    order="lin",
+    mix=False,
+    n_bin=29,
+    title="",
+    colors=None,
+    out_base=None,
+    plot_all_points=False,
+    par_ground_truth=None,
+    stats_file=None,
+    verbose=False,
+):
+    """Plots All Corr 1D.
+    
+    Creates all plots for 1D correlations.
+    
+    Parameters
+    ----------
+    x : array(double)
+        input x value
+    y : array(m) of double
+        input y arrays
+    xlabel_arr, ylabel_arr : list of str
+        x-and y-axis labels
+    weights  : array of double, optional, default=None
+        weights of x points
+    order : str, optional
+        order of fit, default is 'lin'
+    mix : bool, optional
+        mixing of components if ``True; default)
+    n_bin: int, optional, default=29
+        number of points onto which data are binned
+    title : str
+        title string, default is ""
+    colors : array(m) of str, optional, default=None
+        line colors
+    out_base : str, optional, default=None
+        output file path base, if not given, plot is not saved to file
+    plot_all_points : bool, optional
+        plot all individual data points if ``True``; default is ``False``
+    par_ground_truth : dict, optional
+        ground truth parameter, for plotting, default is `None`
+    
+    """
+    if colors is None:
+        prop_cycle = plt.rcParams["axes.prop_cycle"]
+        colors = prop_cycle.by_key()["color"]
+
+    p_dp = {
+        p: ufloat(res_params[p].value, res_params[p].stderr)
+        for p in res_params
+    }
+
+    # Get spin coefficients
+    s_ds = leakage.param_order2spin(p_dp, order, mix)
+
+    # Output to stats file
+    if stats_file:
+        for p in res_params:
+            leakage.print_stats(f"{p}={p_dp[p]:.2ugP}", stats_file, verbose=verbose)
+        for spin in s_ds:
+            leakage.print_stats(
+                f"{spin}={s_ds[spin]:.2ugP}",
+                stats_file,
+                verbose=verbose,
+            )
+
+    # Bar plots of spin components
+    s_ground_truth = leakage.param_order2spin(par_ground_truth, order, mix) if par_ground_truth else None
+    out_path_spin = f"{out_base}_spin.png" if out_base else None
+    plot_bar_spin(
+        s_ds,
+        s_ground_truth=s_ground_truth,
+        output_path=out_path_spin,
+    )
+
+    # Curves
+    plot_corr_2d(
+        x,
+        y,
+        weights,
+        res_params,
+        p_dp,
+        n_bin,
+        order,
+        mix,
+        xlabel_arr,
+        ylabel_arr,
+        plot_all_points=plot_all_points,
+        par_ground_truth=par_ground_truth,
+        title=title,
+        colors=colors,
+        out_base=out_base,
+    )
