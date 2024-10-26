@@ -611,7 +611,16 @@ class RhoStat():
     def load_rho_stats(self, filename):
         self.rho_stats = fits.getdata(self.catalogs._output+'/'+filename)
 
-    def plot_rho_stats(self, filenames, colors, catalog_ids, abs=True, savefig=None, legend="each"):
+    def plot_rho_stats(
+        self,
+        filenames,
+        colors,
+        catalog_ids,
+        abs=True,
+        savefig=None,
+        legend="each",
+        title=None,
+    ):
         """
         plot_rho_stats
 
@@ -635,7 +644,11 @@ class RhoStat():
             If not None, saves the figure with the name given in savefig.
 
         legend : str, optional
-            allowed are "each" (default; legends in each panel), "outside" (legend outside of panels)
+            allowed are "each" (default; legends in each panel);
+            "outside" (legend outside of panels); "none" (no legend)
+
+        title : str, optional
+            global plot tite, default is ``None``
         """
 
         fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(15,9))
@@ -647,11 +660,11 @@ class RhoStat():
             for i in range(6):
                 xlabel=r"$\theta$ [arcmin]" if i>2 else ''
 
-                if legend == "inside":
+                if legend == "each":
                     ylabel = r"$\rho-$statistics" if (i==0 or i==3) else ''
-                    label = fr'$\rho_{i}(\theta)$ '+cat_id
-                else:
-                    ylabel = rf"$\rho_{i}(\theta)$"
+                    label = fr'$\rho_{i}(\theta)$ {cat_id}'
+                elif legend == "outside":
+                    ylabel = rf"$\rho_i(\theta)$"
                     label = fr'$\rho_i$ {cat_id}'
 
                 if abs:
@@ -659,7 +672,6 @@ class RhoStat():
                     label=label, color=color, capsize=2)
                     ax[i].set_xlabel(xlabel)
                     ax[i].set_ylabel(ylabel)
-                    ax[i].set_xlim(float(self._treecorr_config["min_sep"]), float(self._treecorr_config["max_sep"]))
                     ax[i].set_xscale('log')
                     ax[i].set_yscale('log')
                 else:
@@ -668,12 +680,16 @@ class RhoStat():
                         ax[i], self.rho_stats['theta'], self.rho_stats['rho_'+str(i)+'_p'], yerr_in=np.sqrt(self.rho_stats['varrho_'+str(i)+'_p']),
                         vertical_lines=False, rho_nb=str(i), cat_id=cat_id, xlabel=xlabel, ylabel=ylabel, semilogx=True, semilogy=True, capsize=True, color=color,
                     )
+                ax[i].set_xlim(float(self._treecorr_config["min_sep"]), float(self._treecorr_config["max_sep"]))
 
-                if legend == "inside":
+                if legend == "each":
                     ax[i].legend(loc='best', fontsize='small')
 
         if legend == "outside":
             ax[-1].legend(bbox_to_anchor=(1.5, 0.0), fontsize='small')
+
+        if title:
+            plt.suptitle(title)
 
         plt.tight_layout()
         if savefig is not None:
