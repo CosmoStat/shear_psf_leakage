@@ -35,24 +35,42 @@
 # The ‘+’ components can be computed as
 # \begin{align}
 #     \xi_{\textrm{sys}, +}(\theta)
-#     = & \sum_{k,l=1}^2 \sum_{i=1}^2 \alpha_{ik} \alpha_{jl} \rho_{0, kl}(\theta)
+#     = & \sum_{k,l=1}^2 \sum_{i=1}^2 \alpha_{ik} \alpha_{il} \rho_{0, kl}(\theta)
 #     \nonumber \\
 #     = & \,
 #         \left(
-#             \alpha_{11}^2 + \alpha_{22}^2
-#         \right)
-#         \rho_{0, +}(\theta)
-#         + \alpha_{21}^2 \, \rho_{0, 11}(\theta) + \alpha_{12}^2 \, \rho_{0, 22}(\theta)
-#         \nonumber \\= & \,
-#         2 \left[ \left(\alpha_0^\Re \right)^2 + \left(\alpha_4^\Re\right)^2 \right]
+#             \alpha_{11}^2 + \alpha_{21}^2
+#         \right) \rho_{0, 11}(\theta)
+#         + \left(
+#             \alpha_{12}^2 + \alpha_{22}
+#         \right)^2 \rho_{0, 22}(\theta)
+#         \nonumber \\
+#         & \,
+#         + 2 \left(
+#             \alpha_{11} \alpha_{12} + \alpha_{21} \alpha_{22}
+#         \right) \rho_{0, 12}(\theta)
+#         \nonumber \\
+#     = & \,
+#         \left| \alpha_0 + \alpha_4 \right|^2 \rho_{0, 11}(\theta)
+#         + \left| \alpha_0 - \alpha_4 \right|^2 \rho_{0, 22}(\theta)
+#         \nonumber \\
+#         & \,
+#         + 4 \left( \alpha_0^\Re \alpha_4^\Im + \alpha_4^\Re \alpha_0^\Im \right)
+#         \rho_{0, 12}(\theta)
+#         \nonumber \\
+#     = & \,
+#         2 \left[
+#             \left(\alpha_0^\Re \right)^2 + \left(\alpha_4^\Im\right)^2
+#             + \left(\alpha_0^\Re \right)^2 + \left(\alpha_4^\Im\right)^2
+#         \right]
 #         \rho_{0, +}(\theta)
 #         \nonumber \\
 #       &
-#       + \left( \alpha^\Im_0 + \alpha^\Im_4 \right)^2
+#       + 2 \left( \alpha_0^\Re \alpha_4^\Re + \alpha_0^\Im \alpha_4^\Im \right)
 #         \left[ \rho_{0, 11}(\theta) - \rho_{0, 22}(\theta) \right]
 #        \nonumber \\
 #       &
-#       + 4 \left( \alpha^\Re_0 \alpha^\Im_4 + \alpha^\Re_4 \alpha^\Im_0 \right)
+#       + 4 \left( \alpha_0^\Re \alpha_4^\Im + \alpha_4^\Re \alpha_0^\Im \right)
 #         \rho_{0, 12}(\theta)
 #         ,
 # \end{align}
@@ -173,18 +191,25 @@ def get_rho_0(self, idx, jdx):
 
 # +
 # xi_sys terms
+
+
+# Split into +, '-', and mixed parts
+
 xi_sys_term_p = (
-    2 * (alpha_0_r ** 2 + alpha_4_r ** 2)
+    (alpha_0_r ** 2 + alpha_0_i ** 2 + alpha_4_r ** 2 + alpha_4_i ** 2)
     * (get_rho_0(obj_scale, 0, 0) + get_rho_0(obj_scale, 1, 1))
 )
-xi_sys_term_m = (alpha_0_i + alpha_4_i) * (alpha_0_i + alpha_4_i) * (get_rho_0(obj_scale, 0, 0) - get_rho_0(obj_scale, 1, 1))
+xi_sys_term_m = (
+    2 * (alpha_0_r * alpha_4_r + alpha_0_i * alpha_4_i)
+     * (get_rho_0(obj_scale, 0, 0) - get_rho_0(obj_scale, 1, 1))
+)
 xi_sys_term_mixed = (
     4 * (
         alpha_0_r * alpha_4_i - alpha_4_r * alpha_0_i
     ) * get_rho_0(obj_scale, 0, 1)
 )
 
-xi_sys_total = xi_sys_term_p + xi_sys_term_m + xi_sys_term_mixed
+xi_sys_tot = xi_sys_term_p + xi_sys_term_m + xi_sys_term_mixed
 # -
 
 
@@ -227,7 +252,7 @@ y = [
     unumpy.nominal_values(xi_sys_term_p),
     unumpy.nominal_values(xi_sys_term_m),
     unumpy.nominal_values(xi_sys_term_mixed),
-    unumpy.nominal_values(xi_sys_total),
+    unumpy.nominal_values(xi_sys_tot),
     xi_sys_scalar,
     
 ]
@@ -235,7 +260,7 @@ dy = [
     unumpy.std_devs(xi_sys_term_p),
     unumpy.std_devs(xi_sys_term_m),
     unumpy.std_devs(xi_sys_term_mixed),
-    unumpy.std_devs(xi_sys_total),
+    unumpy.std_devs(xi_sys_tot),
     std_xi_sys_scalar,
 ]
 x = [theta_arcmin] * len(y)
@@ -245,6 +270,7 @@ xlabel = r"$\theta$ [arcmin]"
 ylabel = "terms"
 out_path = f"{obj_scale._params['output_dir']}/xi_sys_terms.png"                                  
 labels = ["$t_+$", "$t_-$", r"$t_{\rm mixed}$", r"$\sum t_i$", "scalar"]
+markers = ["o", "d", "^", "x", "s"]
 
 ylim = [-1e-6, 2e-6]
 
@@ -261,7 +287,140 @@ cs_plots.plot_data_1d(
     xlog=True,
     ylog=False,
     ylim=ylim,
+    markers=markers,
 )
+# +
+# Consistency test. Different computations of xi_sys terms
+
+# Using a_ij matrix
+xi_sys_term_m_11 = (
+    (obj_scale.get_alpha_ufloat(0, 0) ** 2 + obj_scale.get_alpha_ufloat(1, 0) ** 2)
+    * get_rho_0(obj_scale, 0, 0)
+)
+xi_sys_term_m_22 = (
+    (obj_scale.get_alpha_ufloat(0, 1) ** 2 + obj_scale.get_alpha_ufloat(1, 1) ** 2)
+    * get_rho_0(obj_scale, 1, 1)
+)
+xi_sys_term_m_12 = (
+    2 * (obj_scale.get_alpha_ufloat(0, 0) * obj_scale.get_alpha_ufloat(0, 1)
+     + obj_scale.get_alpha_ufloat(1, 0) * obj_scale.get_alpha_ufloat(1, 1))
+     * get_rho_0(obj_scale, 0, 1)
+)
+
+# Sum of the three terms
+xi_sys_m_tot =  xi_sys_term_m_11 + xi_sys_term_m_22 + xi_sys_term_m_12
+
+# Matrix sum
+xi_sys_m2_tot = 0
+for idx in (0, 1):
+    for kdx in (0, 1):
+        for ldx in (0, 1):
+            xi_sys_m2_tot +=  (
+                obj_scale.get_alpha_ufloat(idx, kdx)
+                * obj_scale.get_alpha_ufloat(idx, ldx)
+                * get_rho_0(obj_scale, kdx, ldx)
+            )
+
+y = [
+    unumpy.nominal_values(xi_sys_term_m_11),
+    unumpy.nominal_values(xi_sys_term_m_22),
+    unumpy.nominal_values(xi_sys_term_m_12),
+    unumpy.nominal_values(xi_sys_m_tot),
+    unumpy.nominal_values(xi_sys_m2_tot),
+    unumpy.nominal_values(xi_sys_tot),
+    
+]
+dy = [
+    unumpy.std_devs(xi_sys_term_m_11),
+    unumpy.std_devs(xi_sys_term_m_22),
+    unumpy.std_devs(xi_sys_term_m_12),
+    unumpy.std_devs(xi_sys_m_tot),
+    unumpy.std_devs(xi_sys_m2_tot),
+    unumpy.std_devs(xi_sys_tot),
+]
+x = [theta_arcmin] * len(y)
+
+title = r"Bacon et al. (2003) $\xi_{sys}$"
+xlabel = r"$\theta$ [arcmin]" 
+ylabel = "terms with matrix coeffs"
+out_path = f"{obj_scale._params['output_dir']}/xi_sys_terms_m.png"                                  
+labels = ["$t_{11}$", "$t_{22}$", r"$t_{12}$", r"$\sum t_i$ (matrix terms)", r"$\sum t_i$ (matrix terms 2)", "$\sum t_i$ (spin terms)"]
+markers = ["o", "d", "^", "x", "h", "s"]
+linestyles = [":"] * 3
+linestyles.extend(["-", "-.", "--"])
+
+ylim = [-1e-6, 2e-6]
+
+cs_plots.plot_data_1d(
+    x,
+    y,
+    dy,
+    title,
+    xlabel,
+    ylabel,
+    out_path,
+    labels=labels,
+    shift_x=False,
+    xlog=True,
+    ylog=False,
+    ylim=ylim,
+    markers=markers,
+    linestyles=linestyles,
+)
+
+
+
+# +
+# Plot difference, should be consistent with zero
+
+d1 = xi_sys_m_tot - xi_sys_tot
+d2 = xi_sys_m2_tot - xi_sys_tot
+d3 = xi_sys_m_tot - xi_sys_m2_tot
+
+d4 = xi_sys_term_m_11 + xi_sys_term_m_22 - (xi_sys_term_p + xi_sys_term_m)
+d5 = xi_sys_term_m_12 - xi_sys_term_mixed
+
+y = [
+    unumpy.nominal_values(d1),
+    unumpy.nominal_values(d2),
+    unumpy.nominal_values(d3),
+    unumpy.nominal_values(d4),
+    unumpy.nominal_values(d5),
+]
+dy = [
+    unumpy.std_devs(d1),
+    unumpy.std_devs(d2),
+    unumpy.std_devs(d3),
+    #unumpy.std_devs(d4),
+    #unumpy.std_devs(d5),
+]
+x = [theta_arcmin] * len(y)
+
+title = r"Bacon et al. (2003) $\xi_{sys}$"
+xlabel = r"$\theta$ [arcmin]" 
+ylabel = "difference"
+out_path = f"{obj_scale._params['output_dir']}/xi_sys_diff.png"                                  
+labels = [r"(matrix - spin) tot", r"(matrix 2 - spin) tot", "(matrix - matrix 2) tot", "11 22", "mixed"]
+markers = ["o", "d", "s", "x", "v"]
+linestyles = ["-", "--", ":", ":", ":"]
+
+
+cs_plots.plot_data_1d(
+    x[:3],
+    y[:3],
+    dy[:3],
+    title,
+    xlabel,
+    ylabel,
+    out_path,
+    labels=labels,
+    shift_x=True,
+    xlog=True,
+    ylog=False,
+    markers=markers,
+    linestyles=linestyles,
+)
+
 # +
 # Test: compare different estimates of xi_sys. Some use uncentered, some centered correlation functions.
 
