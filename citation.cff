@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Kilbinger"
+  given-names: "Martin"
+  orcid: "https://orcid.org/0000-0001-9513-7138"
+- family-names: "Guerrini"
+  given-names: "Sacha"
+  orcid: "https://orcid.org/0009-0004-3655-4870
+- family-names: "Bonini"
+  given-names: "Clara"
+title: "Shear PSF leakage"
+version: 0.1.6
+doi: 00.0000/zenodo.0000
+date-released: 2024-12-12
+url: "https://github.com/CosmoStat/shear_psf_leakage"

@@ -771,15 +771,16 @@ class LeakageScale:
 
         """
         # Set some x-values and limits for plot
+        x0 = self._params["theta_min_amin"]
         if xlinlog == "log":
-            x0 = self._params["theta_min_amin"]
+            x0 = x0 * 0.9
             x_affine = np.geomspace(x0, self._params["theta_max_amin"])
             xlim = [x0, self._params["theta_max_amin"]]
             xlog = True
         else:
-            x0 = -10
-            x_affine = np.linspace(0, self._params["theta_max_amin"])
-            xlim = [x0 * 2, self._params["theta_max_amin"]]
+            x0 = x0 ** 0.9
+            x_affine = np.linspace(x0, self._params["theta_max_amin"])
+            xlim = [x0, self._params["theta_max_amin"]]
             xlog = False
 
         # alpha(theta) data points
