@@ -70,7 +70,7 @@
 #         \left[ \rho_{0, 11}(\theta) - \rho_{0, 22}(\theta) \right]
 #        \nonumber \\
 #       &
-#       + 4 \left( \alpha_0^\Re \alpha_4^\Im + \alpha_4^\Re \alpha_0^\Im \right)
+#       + 4 \left( \alpha_0^\Re \alpha_4^\Im - \alpha_4^\Re \alpha_0^\Im \right)
 #         \rho_{0, 12}(\theta)
 #         ,
 # \end{align}
@@ -157,8 +157,6 @@ alpha_4_i = (
         + obj_scale.get_alpha_ufloat(1, 0)
     )
 )
-
-print(alpha_0_r[0], alpha_0_i[0], alpha_4_r[0], alpha_4_i[0])
 
 
 # -
@@ -272,7 +270,10 @@ out_path = f"{obj_scale._params['output_dir']}/xi_sys_terms.png"
 labels = ["$t_+$", "$t_-$", r"$t_{\rm mixed}$", r"$\sum t_i$", "scalar"]
 markers = ["o", "d", "^", "x", "s"]
 
-ylim = [-1e-6, 2e-6]
+factor = 0.9
+xlim = [obj_scale._params["theta_min_amin"] ** factor, obj_scale._params["theta_max_amin"]]
+
+#ylim = [-1e-6, 2e-6]
 
 cs_plots.plot_data_1d(
     x,
@@ -286,7 +287,7 @@ cs_plots.plot_data_1d(
     shift_x=True,
     xlog=True,
     ylog=False,
-    ylim=ylim,
+    xlim=xlim,
     markers=markers,
 )
 # +
@@ -363,12 +364,11 @@ cs_plots.plot_data_1d(
     shift_x=False,
     xlog=True,
     ylog=False,
+    xlim=xlim,
     ylim=ylim,
     markers=markers,
     linestyles=linestyles,
 )
-
-
 
 # +
 # Plot difference, should be consistent with zero
@@ -417,6 +417,7 @@ cs_plots.plot_data_1d(
     shift_x=True,
     xlog=True,
     ylog=False,
+    xlim=xlim,
     markers=markers,
     linestyles=linestyles,
 )

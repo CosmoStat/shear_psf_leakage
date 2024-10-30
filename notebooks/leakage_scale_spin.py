@@ -7,23 +7,22 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.16.1
+#       jupytext_version: 1.15.1
 #   kernelspec:
-#     display_name: shear-psf-leakage-cHl61fDi-py3.9
+#     display_name: sp_validation
 #     language: python
 #     name: python3
 # ---
 
-# # Scale-dependent PSF leakage
+# # PSF contamination: Scale-dependent PSF leakage
 #
-# ## Spin-consistent calculations
-#
-# Computes and plots scale-dependent spin-consistent PSF leakage functions.
+# ## Spin-consistent formalism
 #
 # Martin Kilbinger <martin.kilbinger@cea.fr>
 
 # %reload_ext autoreload
 # %autoreload 2
+# %matplotlib inline
 
 # +
 import os
@@ -35,45 +34,53 @@ from uncertainties import unumpy
 from cs_util import plots as cs_plots
 from cs_util import args
 
-import shear_psf_leakage.run_scale as run
+from shear_psf_leakage import run_scale
 from shear_psf_leakage.leakage import *
 # -
 
-# ## Compute leakage
+# ## Set up
 
-# Create leakage instance
-obj = run.LeakageScale()
+# Create instance of scale-dependent leakage object
+obj_scale = run_scale.LeakageScale()
 
 
 # ### Set input parameters
 
 # Read python parameter file or get user input
-params_upd = args.read_param_script("params_leakage_scale.py", obj._params, verbose=True)
+params_upd = args.read_param_script(
+    "params_leakage_scale.py",
+    obj_scale._params,
+    verbose=True
+)
 for key in params_upd:
-    obj._params[key] = params_upd[key]
+    obj_scale._params[key] = params_upd[key]
 
 # ### Run
 
+# +
 # Check parameter validity
-obj.check_params()
+obj_scale.check_params()
 
 # Prepare output directory and stats file
-obj.prepare_output()
+obj_scale.prepare_output()
+# -
 
-# Prepare input
-obj.read_data()
+# ### Read input catalogues
+
+# Read input galaxy and star catalogue
+obj_scale.read_data()
 
 # #### Compute correlation function and alpha matrices
 # The following command calls `treecorr` to compute auto- and cross-correlation functions.
 # This can take a few minutes.
 
-obj.compute_corr_gp_pp_alpha_matrix()
+obj_scale.compute_corr_gp_pp_alpha_matrix()
 
-obj.alpha_matrix()
+obj_scale.alpha_matrix()
 
 #### For comparison: scalar alpha leakage
-obj.compute_corr_gp_pp_alpha()
-obj.do_alpha()
+obj_scale.compute_corr_gp_pp_alpha()
+obj_scale.do_alpha()
 
 # #### PSF auto-correlation function correlation matrix
 #
@@ -85,25 +92,26 @@ obj.do_alpha()
 # $$
 
 # Check symmetry of PSF auto-correlation matrix
-diff = obj.Xi_pp_m[0][1] - obj.Xi_pp_m[1][0]
+diff = obj_scale.Xi_pp_m[0][1] - obj_scale.Xi_pp_m[1][0]
 print(
     "Is r symmetrical? max abs (rel) diff ="
-    +f" {max(np.abs(diff)):.3e} ({max(np.abs(diff / obj.Xi_pp_m[0][1])):.3e})",
+    + f" {max(np.abs(diff)):.3e}"
+    + f" ({max(np.abs(diff / obj_scale.Xi_pp_m[0][1])):.3e})",
 )
 
 # +
 # Plot r and ratios of r
 
-theta = obj.get_theta()
+theta = obj_scale.get_theta()
 
-# Exact calculation
+# Exact: Using centered correlation functions
 r = []
 r_ratio_1 = []
 r_ratio_2 = []
 for ndx in range(len(theta)):
     my_r = (
-        obj.Xi_pp_ufloat[ndx][0, 1] ** 2
-        / (obj.Xi_pp_ufloat[ndx][0, 0] * obj.Xi_pp_ufloat[ndx][1, 1])
+        obj_scale.Xi_pp_ufloat[ndx][0, 1] ** 2
+        / (obj_scale.Xi_pp_ufloat[ndx][0, 0] * obj_scale.Xi_pp_ufloat[ndx][1, 1])
     )
     r.append(my_r)
     r_ratio_1.append(1 / (1 - my_r))
@@ -111,8 +119,8 @@ for ndx in range(len(theta)):
 
 print("min max mean r = ", np.min(r), np.max(r), np.mean(r))
 
-# Approximate
-r_fast = obj.xi_pp_m[0][1] ** 2 / (obj.xi_pp_m[0][0] * obj.xi_pp_m[1][1])
+# Approximate: Using uncentered correlation functions
+r_fast = obj_scale.xi_pp_m[0][1] ** 2 / (obj_scale.xi_pp_m[0][0] * obj_scale.xi_pp_m[1][1])
 
 n = 6
 theta_arr = [theta] * n
@@ -140,14 +148,14 @@ linewidths = [2] * 3 + [1] * 3
 xlabel = r"$\theta$ [arcmin]"
 ylabel = r"functions of $r(\theta)$"
 
-fac = 1.1
+fac = 0.9
 xlim = [
-    obj._params["theta_min_amin"] / fac,
-    obj._params["theta_max_amin"] * fac
+    obj_scale._params["theta_min_amin"] * fac,
+    obj_scale._params["theta_max_amin"],
 ]
 ylim = (-0.5, 2)
 
-out_path = f"{obj._params['output_dir']}/r.png"
+out_path = f"{obj_scale._params['output_dir']}/r.png"
 
 title = ""
 
@@ -173,19 +181,17 @@ cs_plots.plot_data_1d(
 # +
 # Plot alpha matrix elements
 
-theta = obj.get_theta()
+ylim = obj_scale._params["leakage_alpha_ylim"]
 
-xlim = [obj._params["theta_min_amin"] / fac, obj._params["theta_max_amin"] * fac]
-ylim = obj._params["leakage_alpha_ylim"]
-
-theta_arr = [theta] * 4
+n = 4
+theta_arr = [theta] * n
     
 alpha = []
 yerr = []
 labels = []
 for idx in (0, 1):
     for jdx in (0, 1):   
-        alpha_ufloat = obj.get_alpha_ufloat(idx, jdx)
+        alpha_ufloat = obj_scale.get_alpha_ufloat(idx, jdx)
         alpha.append(unumpy.nominal_values(alpha_ufloat))
         yerr.append(unumpy.std_devs(alpha_ufloat))
         labels.append(rf"$\alpha_{{{idx+1}{jdx+1}}}$")
@@ -197,7 +203,7 @@ markers = ["o", "^", "v", "s"]
 xlabel = r"$\theta$ [arcmin]"
 ylabel = r"$\alpha_{ij}(\theta)$"
 title = ""
-out_path = f"{obj._params['output_dir']}/alpha_ij.png"
+out_path = f"{obj_scale._params['output_dir']}/alpha_ij.png"
 
 cs_plots.plot_data_1d(
     theta_arr,
@@ -219,49 +225,39 @@ cs_plots.plot_data_1d(
 )
 
 # +
-# Plot spin elements: Spin-0 and spin-4
+# Plot spin coefficients
 
-x0 = 0.5 * (
-     obj.get_alpha_ufloat(0, 0)
-    + obj.get_alpha_ufloat(1, 1)
-)
-x4 = 0.5 * (
-    obj.get_alpha_ufloat(0, 0)
-    - obj.get_alpha_ufloat(1, 1)
-)
-y4 = 0.5 * (obj.get_alpha_ufloat(0, 1) + obj.get_alpha_ufloat(1, 0))
-y0 = 0.5 * (obj.get_alpha_ufloat(1, 0) - obj.get_alpha_ufloat(0, 1))
+obj_scale.compute_alpha_spin_coeffs()
 
-
-ylim = obj._params["leakage_alpha_ylim"]
+n = 4
+theta_arr = [theta] * n
 
 y_arr = [
-    unumpy.nominal_values(x0),
-    unumpy.nominal_values(x4),
-    unumpy.nominal_values(y4),
-    unumpy.nominal_values(y0),
+    unumpy.nominal_values(obj_scale._alpha_0_r),
+    unumpy.nominal_values(obj_scale._alpha_0_i),
+    unumpy.nominal_values(obj_scale._alpha_4_r),
+    unumpy.nominal_values(obj_scale._alpha_4_i),
 ]
 dy_arr = [
-    unumpy.std_devs(x0),
-    unumpy.std_devs(x4),
-    unumpy.std_devs(y4),
-    unumpy.std_devs(y0),
+    unumpy.std_devs(obj_scale._alpha_0_r),
+    unumpy.std_devs(obj_scale._alpha_0_i),
+    unumpy.std_devs(obj_scale._alpha_4_r),
+    unumpy.std_devs(obj_scale._alpha_4_i),
 ]
-theta_arr = [obj.get_theta()] * len(y_arr)
 labels = [
-    r"$\alpha^\Re_0 = (\alpha_{11} + \alpha_{22})/2$",
-    r"$\alpha^\Re_4 = (\alpha_{11} - \alpha_{22})/2$",
-    r"$\alpha^\Im_4 = (\alpha_{12} + \alpha_{21})/2$",
-    r"$\alpha^\Im_0 = (-\alpha_{12} + \alpha_{21})/2$"
+    r"$\alpha^\Re_0$",
+    r"$\alpha^\Im_0$",
+    r"$\alpha^\Re_r$",
+    r"$\alpha^\Im_r$"
 ]
 colors = ["blue", "orange", "green", "magenta"]
-markers = ["o", "s", "h", "^"]
+markers = ["o", "s", "^", "v"]
 linestyles = ["-"] * 4 
 
 xlabel = r"$\theta$ [arcmin]"
 ylabel = r"Components of leakage matrix"
 title = ""
-out_path = f"{obj._params['output_dir']}/alpha_leakage_m_s0_s4.png"
+out_path = f"{obj_scale._params['output_dir']}/alpha_leakage_m_s0_s4.png"
 
 cs_plots.plot_data_1d(
     theta_arr,
@@ -283,13 +279,13 @@ cs_plots.plot_data_1d(
 
 # Including scalar leakage for comparison
 theta_arr.append(theta)
-y_arr.append(obj.alpha_leak)
-dy_arr.append(obj.sig_alpha_leak)
-labels.append(r"$\alpha$ (scalar approx.)")
-colors.append("blue")
-markers.append("p")
+y_arr.append(obj_scale.alpha_leak)
+dy_arr.append(obj_scale.sig_alpha_leak)
+labels.append(r"$\alpha^{\rm s}_{+}$")
+colors.append("cyan")
+markers.append("x")
 linestyles.append("--")
-out_path = f"{obj._params['output_dir']}/alpha_leakage_m_s0_s4_as.png"
+out_path = f"{obj_scale._params['output_dir']}/alpha_leakage_m_s0_s4_as.png"
 
 cs_plots.plot_data_1d(
     theta_arr,
@@ -309,47 +305,49 @@ cs_plots.plot_data_1d(
     close_fig=False,
     shift_x=True,
 )
-
+# + \xi_ {"incorrectly_encoded_metadata": "{22}^\\textrm{g,p} \\, \\xi_{11}^\\textrm{p,p}"}
 # #### Consistency relations for scalar leakage
 
 # If the leakage is a scalar function, it can be expressed in three different ways.
 
 # +
-xlim = [
-    obj._params["theta_min_amin"] / fac,
-    obj._params["theta_max_amin"] * fac
-]
-ylim = obj._params["leakage_alpha_ylim"]
-
 alpha_1 = []
 alpha_2 = []
 for ndx in range(len(theta)):
-    my_a1 = obj.Xi_gp_ufloat[ndx][0, 0] / obj.Xi_pp_ufloat[ndx][0, 0]
+    my_a1 = obj_scale.Xi_gp_ufloat[ndx][0, 0] / obj_scale.Xi_pp_ufloat[ndx][0, 0]
     alpha_1.append(my_a1)
-    my_a2 = obj.Xi_gp_ufloat[ndx][1, 1] / obj.Xi_pp_ufloat[ndx][1, 1]
+    my_a2 = obj_scale.Xi_gp_ufloat[ndx][1, 1] / obj_scale.Xi_pp_ufloat[ndx][1, 1]
     alpha_2.append(my_a2)
 
+# TODO: Use centered functions for all cases
+
 y = [
-    unumpy.nominal_values(x0),
-    obj.alpha_leak,
+    obj_scale.alpha_leak,
     unumpy.nominal_values(alpha_1),
     unumpy.nominal_values(alpha_2),
+    unumpy.nominal_values(obj_scale._alpha_0_r),
 ]
 dy = [
-    unumpy.std_devs(x0),
-    obj.sig_alpha_leak,
+    obj_scale.sig_alpha_leak,
     unumpy.std_devs(alpha_1),
     unumpy.std_devs(alpha_2),
+    unumpy.std_devs(obj_scale._alpha_0_r),
 ]
-theta_arr = [obj.get_theta()] * len(y)
+theta_arr = [theta] * len(y)
 
-
-labels = [r"$\alpha_0^\Re$", r"$\alpha_+$", r"$\alpha_1$", r"$\alpha_2$"]
+labels = [
+    r"$\alpha^{\rm s}_+$",
+    r"$\alpha^{\rm s}_1$",
+    r"$\alpha^{\rm s}_2$",
+    r"$\alpha^\Re_0$",
+]
 xlabel = r"$\theta$ [arcmin]"
 ylabel = r"$\alpha(\theta)$"
-linestyles = ["-", "--", "--", "--"] 
 title = ""
-out_path = f"{obj._params['output_dir']}/alpha_leakage_scalar_consistency.png"
+out_path = f"{obj_scale._params['output_dir']}/alpha_leakage_scalar_consistency.png"
+colors = ["cyan", "black", "grey", "blue"]
+markers = ["x", "h", "o", "o"]
+linestyles = ["--", "--", "--", "-"]
 
 cs_plots.plot_data_1d(
     theta_arr,
@@ -364,25 +362,23 @@ cs_plots.plot_data_1d(
     xlim=xlim,
     ylim=ylim,
     close_fig=False,
-    linestyles=linestyles,
     shift_x=True,
+    colors=colors,
+    markers=markers,
+    linestyles=linestyles,
 )
 # -
 
 # If alpha is a scalar, the mixed-component centered cross-correlation functions should be identical.
 
 # +
-xlim = [obj._params["theta_min_amin"], obj._params["theta_max_amin"]]
-
-theta_arr = [theta] * 3
-
 Xi_12 = []
 Xi_21 = []
 Xi_tr = []
 for ndx in range(len(theta)):
-    Xi_12.append(obj.Xi_gp_ufloat[ndx][0, 1])
-    Xi_21.append(obj.Xi_gp_ufloat[ndx][1, 0])
-    Xi_tr.append(obj.Xi_gp_ufloat[ndx][0, 0] + obj.Xi_gp_ufloat[ndx][0, 0])
+    Xi_12.append(obj_scale.Xi_gp_ufloat[ndx][0, 1])
+    Xi_21.append(obj_scale.Xi_gp_ufloat[ndx][1, 0])
+    Xi_tr.append(obj_scale.Xi_gp_ufloat[ndx][0, 0] + obj_scale.Xi_gp_ufloat[ndx][0, 0])
 
 y = [
     unumpy.nominal_values(Xi_12),
@@ -394,12 +390,15 @@ dy = [
     unumpy.std_devs(Xi_21),
     unumpy.std_devs(Xi_tr),
 ]
+theta_arr = [theta] * len(y)
 
-labels = [r"$\tau_{12,0}$", r"$\tau_{21,0}$", r"tr$\tau_0$"]
+labels = [r"$\tau_{0, 12}$", r"$\tau_{0,21}$", r"tr$\tau_{0}$"]
 xlabel = r"$\theta$ [arcmin]"
-ylabel = r"correlation functions $\tau_{ij,0}$"
+ylabel = r"correlation functions $\tau_{0,ij}$"
 title = ""
-out_path = f"{obj._params['output_dir']}/Xi_mixed_consistency.png"
+out_path = f"{obj_scale._params['output_dir']}/Xi_mixed_consistency.png"
+markers = ["o", "s", "d"]
+linestyles = ["-", "--", ":"]
 
 cs_plots.plot_data_1d(
     theta_arr,
@@ -414,22 +413,20 @@ cs_plots.plot_data_1d(
     xlim=xlim,
     close_fig=False,
     shift_x=True,
+    markers=markers,
+    linestyles=linestyles,
 )
 
 # +
 # For comparison, plot the same for the PSF - PSF correlations
 
-xlim = [obj._params["theta_min_amin"], obj._params["theta_max_amin"]]
-
-theta_arr = [theta] * 3
-
 Xi_12 = []
 Xi_21 = []
 Xi_tr = []
 for ndx in range(len(theta)):
-    Xi_12.append(obj.Xi_pp_ufloat[ndx][0, 1])
-    Xi_21.append(obj.Xi_pp_ufloat[ndx][1, 0])
-    Xi_tr.append(obj.Xi_pp_ufloat[ndx][0, 0] + obj.Xi_pp_ufloat[ndx][0, 0])
+    Xi_12.append(obj_scale.Xi_pp_ufloat[ndx][0, 1])
+    Xi_21.append(obj_scale.Xi_pp_ufloat[ndx][1, 0])
+    Xi_tr.append(obj_scale.Xi_pp_ufloat[ndx][0, 0] + obj_scale.Xi_pp_ufloat[ndx][0, 0])
 
 y = [
     unumpy.nominal_values(Xi_12),
@@ -441,13 +438,15 @@ dy = [
     unumpy.std_devs(Xi_21),
     unumpy.std_devs(Xi_tr),
 ]
+theta_arr = [theta] * len(y)
 
-
-labels = [r"$\rho_{12,0}$", r"$\rho_{21,0}$", r"tr$\rho_0$"]
+labels = [r"$\rho_{0,12}$", r"$\rho_{0,21}$", r"tr$\rho_0$"]
 xlabel = r"$\theta$ [arcmin]"
 ylabel = r"Centered correlation functions"
 title = ""
-out_path = f"{obj._params['output_dir']}/Xi_pp_mixed_consistency.png"
+out_path = f"{obj_scale._params['output_dir']}/Xi_pp_mixed_consistency.png"
+markers = ["o", "s", "d"]
+linestyles = ["-", "--", ":"]
 
 cs_plots.plot_data_1d(
     theta_arr,
@@ -462,4 +461,9 @@ cs_plots.plot_data_1d(
     xlim=xlim,
     close_fig=False,
     shift_x=True,
+    markers=markers,
+    linestyles=linestyles,
 )
+# -
+
+
