@@ -29,6 +29,7 @@ class CovTauTh:
         n_e,
         n_psf,
         params=None,
+        use_eta=True,
         **kwargs):
         """
         Initalize the CovTauTh class.
@@ -52,11 +53,14 @@ class CovTauTh:
             Number density of PSF stars
         params: dict
             Parameters of the class
+        use_eta: bool
+            if True, compute the covariance matrix of the tau statistics using the eta statistics. Default is True.
         """
         self.treecorr_config = treecorr_config
         self.A = A
         self.n_e = n_e
         self.n_psf = n_psf
+        self.use_eta = use_eta
 
         if params is None:
             self.params_default()
@@ -73,7 +77,8 @@ class CovTauTh:
         self.sigma_e = self.compute_shape_noise(self.gal, self.gal)
         self.sigma_psf = self.compute_shape_noise(self.psf, self.psf)
         self.sigma_psf_error = self.compute_shape_noise(self.psf_error, self.psf_error)
-        self.sigma_psf_size_error = self.compute_shape_noise(self.size_error, self.size_error)
+        if self.use_eta:
+            self.sigma_psf_size_error = self.compute_shape_noise(self.size_error, self.size_error)
 
 
         #interpolate rho stats
@@ -83,12 +88,12 @@ class CovTauTh:
         self.rho_1_m_itp = self.build_interpolator(self.psf_error, self.psf_error, type='minus')
         self.rho_2_p_itp = self.build_interpolator(self.psf, self.psf_error, type='plus')
         self.rho_2_m_itp = self.build_interpolator(self.psf, self.psf_error, type='minus')
-        self.rho_3_p_itp = self.build_interpolator(self.size_error, self.size_error, type='plus')
-        self.rho_3_m_itp = self.build_interpolator(self.size_error, self.size_error, type='minus')
-        self.rho_4_p_itp = self.build_interpolator(self.psf_error, self.size_error, type='plus')
-        self.rho_4_m_itp = self.build_interpolator(self.psf_error, self.size_error, type='minus')
-        self.rho_5_p_itp = self.build_interpolator(self.psf, self.size_error, type='plus')
-        self.rho_5_m_itp = self.build_interpolator(self.psf, self.size_error, type='minus')
+        self.rho_3_p_itp = self.build_interpolator(self.size_error, self.size_error, type='plus') if self.use_eta else None
+        self.rho_3_m_itp = self.build_interpolator(self.size_error, self.size_error, type='minus') if self.use_eta else None
+        self.rho_4_p_itp = self.build_interpolator(self.psf_error, self.size_error, type='plus') if self.use_eta else None
+        self.rho_4_m_itp = self.build_interpolator(self.psf_error, self.size_error, type='minus') if self.use_eta else None
+        self.rho_5_p_itp = self.build_interpolator(self.psf, self.size_error, type='plus') if self.use_eta else None
+        self.rho_5_m_itp = self.build_interpolator(self.psf, self.size_error, type='minus') if self.use_eta else None
 
 
         #interpolate tau stats
@@ -96,8 +101,8 @@ class CovTauTh:
         self.tau_0_m_itp = self.build_interpolator(self.gal, self.psf, type='minus')
         self.tau_2_p_itp = self.build_interpolator(self.gal, self.psf_error, type='plus')
         self.tau_2_m_itp = self.build_interpolator(self.gal, self.psf_error, type='minus')
-        self.tau_5_p_itp = self.build_interpolator(self.gal, self.size_error, type='plus')
-        self.tau_5_m_itp = self.build_interpolator(self.gal, self.size_error, type='minus')
+        self.tau_5_p_itp = self.build_interpolator(self.gal, self.size_error, type='plus') if self.use_eta else None
+        self.tau_5_m_itp = self.build_interpolator(self.gal, self.size_error, type='minus') if self.use_eta else None
 
         #interpolate xi plus and minus
         self.xi_plus_itp = self.build_interpolator(self.gal, self.gal, type='plus')
@@ -235,16 +240,19 @@ class CovTauTh:
             ra_units=ra_units, dec_units=dec_units
         )
 
-        size_resid = (cat_psf[self._params['star_size']]**2-cat_psf[self._params['PSF_size']]**2)/cat_psf[self._params['star_size']]**2\
-        if self._params['square_size'] else\
-        (cat_psf[self._params['star_size']]-cat_psf[self._params['PSF_size']])/cat_psf[self._params['star_size']]
+        if self.use_eta:
+            size_resid = (cat_psf[self._params['star_size']]**2-cat_psf[self._params['PSF_size']]**2)/cat_psf[self._params['star_size']]**2\
+            if self._params['square_size'] else\
+            (cat_psf[self._params['star_size']]-cat_psf[self._params['PSF_size']])/cat_psf[self._params['star_size']]
 
-        size_error = treecorr.Catalog(
-            ra=cat_psf[self._params['ra_col']], dec=cat_psf[self._params['dec_col']],
-            g1=cat_psf[self._params['e1_star_col']]*size_resid,
-            g2=cat_psf[self._params['e2_star_col']]*size_resid,
-            ra_units=ra_units, dec_units=dec_units
-        )
+            size_error = treecorr.Catalog(
+                ra=cat_psf[self._params['ra_col']], dec=cat_psf[self._params['dec_col']],
+                g1=cat_psf[self._params['e1_star_col']]*size_resid,
+                g2=cat_psf[self._params['e2_star_col']]*size_resid,
+                ra_units=ra_units, dec_units=dec_units
+            )
+        else:
+            size_error = None
         return gal, psf, psf_error, size_error
     
     def compute_shape_noise(self, cat1, cat2):
@@ -287,7 +295,7 @@ class CovTauTh:
         """
         assert (type in ['plus', 'minus']), ("The type must be either 'plus' or 'minus'")
 
-        gg = treecorr.GGCorrelation(nbins=30, min_sep=1e-3, max_sep=1e3, sep_units='arcmin')
+        gg = treecorr.GGCorrelation(nbins=30, min_sep=8e-2, max_sep=1e3, sep_units='arcmin')
         gg.process(cat_1, cat_2)
         bins = gg.meanr
         if type=='plus':
@@ -313,16 +321,23 @@ class CovTauTh:
         """
         cov_00 = self.compute_00_comp(**kwargs)
         cov_02 = self.compute_02_comp(**kwargs)
-        cov_05 = self.compute_05_comp(**kwargs)
-        cov_25 = self.compute_25_comp(**kwargs)
         cov_22 = self.compute_22_comp(**kwargs)
-        cov_55 = self.compute_55_comp(**kwargs)
+        if self.use_eta:
+            cov_05 = self.compute_05_comp(**kwargs)
+            cov_25 = self.compute_25_comp(**kwargs)
+            cov_55 = self.compute_55_comp(**kwargs)
 
-        cov = np.block([
-            [cov_00, cov_02, cov_05],
-            [cov_02.T, cov_22, cov_25],
-            [cov_05.T, cov_25.T, cov_55]
-        ])
+        if self.use_eta:
+            cov = np.block([
+                [cov_00, cov_02, cov_05],
+                [cov_02.T, cov_22, cov_25],
+                [cov_05.T, cov_25.T, cov_55]
+            ])
+        else:
+            cov = np.block([
+                [cov_00, cov_02],
+                [cov_02.T, cov_22]
+            ])
         return cov
 
     def compute_00_comp(self, **kwargs):
