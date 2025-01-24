@@ -5,6 +5,7 @@ Author: Sacha Guerrini
 """
 
 from tqdm import tqdm
+import warnings
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -234,7 +235,7 @@ class Catalogs():
         if output is not None:
             self._output = output
 
-    def read_shear_cat(self, path_gal, path_psf, hdu=1):
+    def read_shear_cat(self, path_gal, path_psf, hdu=1, store=False):
         """
         read_shear_cat
 
@@ -247,11 +248,13 @@ class Catalogs():
         """
         assert ((path_gal is not None) or (path_psf is not None)), ("Please specify a path for the shear catalog you want to read.")
         if path_gal is not None:
-            self.dat_shear = fits.getdata(path_gal, ext=hdu)
+            dat_shear = fits.getdata(path_gal, ext=hdu)
+            return dat_shear
         if path_psf is not None:
-            self.dat_psf = fits.getdata(path_psf, ext=hdu)
+            dat_psf = fits.getdata(path_psf, ext=hdu)
+            return dat_psf
 
-    def get_cat_fields(self, cat_type, square_size=False):
+    def get_cat_fields(self, cat, cat_type, square_size=False):
         """
         Get Cat Fields
 
@@ -259,6 +262,8 @@ class Catalogs():
 
         Parameters
         ----------
+        cat : str
+            catalogue of galaxies or stars. Type should match the cat_type given in argument.
         cat_type : str
             catalogue type, allowed are 'gal', 'psf', 'psf_error' or 'psf_size_error'
 
@@ -291,48 +296,46 @@ class Catalogs():
 
         if cat_type=="gal":
             if self._params["w_col"] is not None:
-                weights = self.dat_shear[self._params["w_col"]]
+                weights = cat[self._params["w_col"]]
             else:
                 weights = np.ones_like(ra)
-            assert self.dat_shear is not None, ("Check you read the shear catalogs correctly.")
-            ra = self.dat_shear[self._params["ra_col"]]
-            dec = self.dat_shear[self._params["dec_col"]]
-            g1 = self.dat_shear[self._params["e1_col"]] - np.average(self.dat_shear[self._params["e1_col"]], weights=weights)
-            g2 = self.dat_shear[self._params["e2_col"]] - np.average(self.dat_shear[self._params["e2_col"]], weights=weights)
+            ra = cat[self._params["ra_col"]]
+            dec = cat[self._params["dec_col"]]
+            g1 = cat[self._params["e1_col"]] - np.average(cat[self._params["e1_col"]], weights=weights)
+            g2 = cat[self._params["e2_col"]] - np.average(cat[self._params["e2_col"]], weights=weights)
             if self._params.get("R11", None) is not None:
                 g1 /= self._params["R11"]
             if self._params.get("R22", None) is not None:
                 g2 /= self._params["R22"]
         else:
-            assert self.dat_psf is not None, ("Check you read the shear catalogs correctly.")
             #Add a mask?
             #mask = (self.dat_psf[self._params["FLAG_PSF_HSM"]]==0) & (self.dat_psf[self._params["FLAG_STAR_HSM"]]==0)
-            ra = self.dat_psf[self._params["ra_col"]]
-            dec = self.dat_psf[self._params["dec_col"]]
+            ra = cat[self._params["ra_col"]]
+            dec = cat[self._params["dec_col"]]
             weights = None
 
             if cat_type=="psf":
-                g1 = self.dat_psf[self._params["e1_PSF_col"]]# - self.dat_psf[self._params["e1_PSF_col"]].mean()
-                g2 = self.dat_psf[self._params["e2_PSF_col"]]# - self.dat_psf[self._params["e2_PSF_col"]].mean()
+                g1 = cat[self._params["e1_PSF_col"]]# - cat[self._params["e1_PSF_col"]].mean()
+                g2 = cat[self._params["e2_PSF_col"]]# - cat[self._params["e2_PSF_col"]].mean()
 
             elif cat_type=="psf_error":
-                g1 = (self.dat_psf[self._params["e1_star_col"]] - self.dat_psf[self._params["e1_PSF_col"]])
+                g1 = (cat[self._params["e1_star_col"]] - cat[self._params["e1_PSF_col"]])
                 #g1 -= g1.mean()
-                g2 = (self.dat_psf[self._params["e2_star_col"]] - self.dat_psf[self._params["e2_PSF_col"]])
+                g2 = (cat[self._params["e2_star_col"]] - cat[self._params["e2_PSF_col"]])
                 #g2 -= g2.mean()
 
             else:
-                size_star = self.dat_psf[self._params["star_size"]]**2 if square_size else  self.dat_psf[self._params["star_size"]]
-                size_psf = self.dat_psf[self._params["PSF_size"]]**2 if square_size else  self.dat_psf[self._params["PSF_size"]]
+                size_star = cat[self._params["star_size"]]**2 if square_size else  cat[self._params["star_size"]]
+                size_psf = cat[self._params["PSF_size"]]**2 if square_size else  cat[self._params["PSF_size"]]
 
-                g1 = self.dat_psf[self._params["e1_star_col"]] * (size_star - size_psf) / size_star
+                g1 = cat[self._params["e1_star_col"]] * (size_star - size_psf) / size_star
                 #g1 -= g1.mean()
-                g2 = self.dat_psf[self._params["e2_star_col"]] * (size_star - size_psf) / size_star
+                g2 = cat[self._params["e2_star_col"]] * (size_star - size_psf) / size_star
                 #g2 -= g2.mean()
 
         return ra, dec, g1, g2, weights
     
-    def build_catalog(self, cat_type, key, npatch=None, patch_centers=None, square_size=False, mask=False):
+    def build_catalog(self, cat, cat_type, key, npatch=None, patch_centers=None, square_size=False, mask=False):
         """
         build_catalogue
 
@@ -360,11 +363,11 @@ class Catalogs():
         if npatch is None:
             npatch = self._params["patch_number"]
 
-        ra, dec, g1, g2, weights = self.get_cat_fields(cat_type, square_size)
+        ra, dec, g1, g2, weights = self.get_cat_fields(cat, cat_type, square_size)
 
         if mask:
-            flag_psf = self.dat_psf[self._params["PSF_flag"]]
-            flag_star = self.dat_psf[self._params["star_flag"]]
+            flag_psf = cat[self._params["PSF_flag"]]
+            flag_star = cat[self._params["star_flag"]]
             mask_arr = (flag_psf==0) & (flag_star==0)
             if weights is not None:
                 weights = weights[mask_arr]
@@ -372,7 +375,7 @@ class Catalogs():
             mask_arr = np.array([True for i in ra])
 
         if patch_centers is None:
-            cat = treecorr.Catalog(
+            cat_tc = treecorr.Catalog(
                 ra=ra[mask_arr],
                 dec=dec[mask_arr],
                 g1=g1[mask_arr],
@@ -383,7 +386,7 @@ class Catalogs():
                 npatch=npatch
             )
         else:
-            cat = treecorr.Catalog(
+            cat_tc = treecorr.Catalog(
                 ra=ra[mask_arr],
                 dec=dec[mask_arr],
                 g1=g1[mask_arr],
@@ -395,7 +398,7 @@ class Catalogs():
             )
 
         self.catalogs_dict.update(
-            {key: cat}
+            {key: cat_tc}
         )
 
     def delete_catalog(self, key):
@@ -515,16 +518,18 @@ class RhoStat():
             HDU number of input FITS file, default is 1
         """
 
-        self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat_star, hdu=hdu)
+        psf_cat = self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat_star, hdu=hdu)
 
         if self.verbose:
             print("Building catalogs...")
 
-        self.catalogs.build_catalog(cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
+        self.catalogs.build_catalog(cat=psf_cat, cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
         patch_centers = self.catalogs.catalogs_dict['psf_'+catalog_id].patch_centers
-        self.catalogs.build_catalog(cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+        self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
         if self.use_eta:
-            self.catalogs.build_catalog(cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+
+        del psf_cat
 
         if self.verbose:
             print("Catalogs successfully built...")
@@ -806,19 +811,21 @@ class TauStat():
         """
 
         if cat_type=="psf":
-            self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat, hdu=hdu)
+            psf_cat = self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat, hdu=hdu)
 
             if self.verbose:
                 print("Building catalogs...")
 
-            self.catalogs.build_catalog(cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
             patch_centers = self.catalogs.catalogs_dict['psf_'+catalog_id].patch_centers
-            self.catalogs.build_catalog(cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
             if self.use_eta:
-                self.catalogs.build_catalog(cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+
+            del psf_cat
 
         else:
-            self.catalogs.read_shear_cat(path_gal=path_cat, path_psf=None, hdu=hdu)
+            gal_cat = self.catalogs.read_shear_cat(path_gal=path_cat, path_psf=None, hdu=hdu)
 
             if self.verbose:
                 print("Building catalog...")
@@ -826,9 +833,11 @@ class TauStat():
             try:
                 patch_centers = self.catalogs.catalogs_dict['psf_'+catalog_id].patch_centers
             except KeyError:
-                print("Warning, you should build psf catalog before galaxy catalog.")
+                warnings.warn("You should build psf catalog before galaxy catalog.")
                 patch_centers = None
-            self.catalogs.build_catalog(cat_type='gal', key='gal_'+catalog_id, patch_centers=patch_centers)
+            self.catalogs.build_catalog(cat=gal_cat, cat_type='gal', key='gal_'+catalog_id, patch_centers=patch_centers)
+
+            del gal_cat
 
         if self.verbose:
             print("Catalogs successfully built...")
