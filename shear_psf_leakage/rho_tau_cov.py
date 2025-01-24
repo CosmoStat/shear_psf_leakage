@@ -77,11 +77,6 @@ class CovTauTh:
 
         #Compute the shape noise
         self.sigma_e = self.compute_shape_noise(self.gal, self.gal)
-        self.sigma_psf = self.compute_shape_noise(self.psf, self.psf)
-        self.sigma_psf_error = self.compute_shape_noise(self.psf_error, self.psf_error)
-        if self.use_eta:
-            self.sigma_psf_size_error = self.compute_shape_noise(self.size_error, self.size_error)
-
 
         #interpolate rho stats
         self.rho_0_p_itp = self.build_interpolator(self.psf, self.psf, type='plus')
