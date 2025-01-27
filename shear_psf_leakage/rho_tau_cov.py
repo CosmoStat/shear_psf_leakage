@@ -73,13 +73,10 @@ class CovTauTh:
         #Create treecorr catalogs
         self.gal, self.psf, self.psf_error, self.size_error = self.create_treecorr_catalog(cat_gal, cat_psf)
 
+        del cat_gal, cat_psf #Free memory from the galaxy and star catalogs.
+
         #Compute the shape noise
         self.sigma_e = self.compute_shape_noise(self.gal, self.gal)
-        self.sigma_psf = self.compute_shape_noise(self.psf, self.psf)
-        self.sigma_psf_error = self.compute_shape_noise(self.psf_error, self.psf_error)
-        if self.use_eta:
-            self.sigma_psf_size_error = self.compute_shape_noise(self.size_error, self.size_error)
-
 
         #interpolate rho stats
         self.rho_0_p_itp = self.build_interpolator(self.psf, self.psf, type='plus')
