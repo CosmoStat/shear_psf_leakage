@@ -69,7 +69,6 @@ def loss_bias_lin_1d(params, x_data, y_data, err):
     return residuals
 
 
-
 def loss_bias_2d(params, x_data, y_data, err, order, mix):
     """Loss Bias 2D.
 
@@ -155,85 +154,80 @@ def print_fit_report(res, file=None):
     print(f"bic = {res.bic}", file=file)
 
 
-def param_order2spin(p_dp, order, mix):
-    """Param Order 2 Spin.
-
-    Transform parameter from natural to spin coefficients.
-
-    Parameters
-    ----------
-    p_dp : dict
-        Parameter natural coefficients
-    order : str
-        expansion order, one of 'linear', 'quad'
-    mix : bool
-        ellipticity components are mixed if ``True``
-
-    Returns
-    -------
-    dict :
-        Parameter spin coefficients
-
-    """
-    s_ds = {}
-
-    s_ds["x0"] = 0.5 * (p_dp["a11"] + p_dp["a22"])
-
-    if order == "quad" and mix:
-        s_ds["x2"] = 0.5 * (p_dp["q111"] + p_dp["q122"])
-        s_ds["y2"] = 0.5 * (p_dp["q211"] - p_dp["q222"])
-        s_ds["x-2"] = 0.25 * (p_dp["q111"] - p_dp["q122"] + p_dp["q212"])
-        s_ds["y-2"] = 0.25 * (p_dp["q211"] - p_dp["q222"] - p_dp["q112"])
-
-    s_ds["x4"] = 0.5 * (p_dp["a11"] - p_dp["a22"])
-
-    if mix:
-        s_ds["y4"] = p_dp["a12"]
-
-    if order == "quad" and mix:
-        s_ds["x6"] = 0.25 * (p_dp["q111"] - p_dp["q122"] - p_dp["q212"])
-        s_ds["y6"] = 0.25 * (p_dp["q211"] - p_dp["q222"] + p_dp["q112"])
-
-    return s_ds
-
-
-def xi_star_gal_tc(
-    ra_gal,
-    dec_gal,
-    e1_gal,
-    e2_gal,
-    w_gal,
-    ra_star,
-    dec_star,
-    e1_star,
-    e2_star,
-    w_star=None,
+def xi_a_b(
+    ra_a,
+    dec_a,
+    e1_a,
+    e2_a,
+    w_a,
+    ra_b,
+    dec_b,
+    e1_b,
+    e2_b,
+    w_b=None,
     theta_min_amin=2,
     theta_max_amin=200,
     n_theta=20,
+    output_path=None,
 ):
-    """Xi star gal tc.
+    """Xi A B.
 
-    Cross-correlation between galaxy and star ellipticities.
+    Cross-correlation between two catalogues a and b.
+
+    Parameters
+    ----------
+    ra_a : numpy.ndarray
+        right ascension values of catalogue a
+    dec_a : numpy.ndarray
+        right ascension values of catalogue a
+    e1_a : numpy.ndarray
+        first ellipticity compoment values of catalogue a
+    e1_a : numpy.ndarray
+        second ellipticity compoment values of catalogue a
+    w_a : numpy.ndarray
+        weights of catalogue a
+    ra_b : numpy.ndarray
+        right ascension values of catalogue b
+    dec_b : numpy.ndarray
+        right ascension values of catalogue b
+    e1_b : numpy.ndarray
+        first ellipticity compoment values of catalogue b
+    e1_b : numpy.ndarray
+        second ellipticity compoment values of catalogue b
+    w_b : numpy.ndarray, optional
+        weights of catalogue b; default with ``None`` is 1 for all weights
+    theta_min_amin : float, optional
+        minimum angular scale in arc minutes; default is 2
+    theta_min_amax : float, optional
+        minimum angular scale in arc minutes; default is 200
+    n_theta : int, optional
+        number of angular scales; default is 20
+    output_path : str, optional
+        output file path; default is ``None`` (no file written)
+
+    Returns
+    -------
+    treecorr.GGCorrelation
+        correlation result
 
     """
     unit = "degrees"
 
-    cat_gal = treecorr.Catalog(
-        ra=ra_gal,
-        dec=dec_gal,
-        g1=e1_gal,
-        g2=e2_gal,
-        w=w_gal,
+    cat_a = treecorr.Catalog(
+        ra=ra_a,
+        dec=dec_a,
+        g1=e1_a,
+        g2=e2_a,
+        w=w_a,
         ra_units=unit,
         dec_units=unit,
     )
-    cat_star = treecorr.Catalog(
-        ra=ra_star,
-        dec=dec_star,
-        g1=e1_star,
-        g2=e2_star,
-        w=w_star,
+    cat_b = treecorr.Catalog(
+        ra=ra_b,
+        dec=dec_b,
+        g1=e1_b,
+        g2=e2_b,
+        w=w_b,
         ra_units=unit,
         dec_units=unit,
     )
@@ -246,90 +240,217 @@ def xi_star_gal_tc(
         "max_sep": theta_max_amin,
         "nbins": n_theta,
     }
-    ng = treecorr.GGCorrelation(TreeCorrConfig)
+    gg = treecorr.GGCorrelation(TreeCorrConfig)
 
-    ng.process(cat_gal, cat_star)
+    gg.process(cat_a, cat_b)
 
-    return ng
+    if output_path:
+        gg.write(output_path)
+
+    return gg
 
 
-def correlation_12_22(
-    ra_1,
-    dec_1,
-    e1_1,
-    e2_1,
-    weights_1,
-    ra_2,
-    dec_2,
-    e1_2,
-    e2_2,
+def correlation_ab_bb(
+    ra_a,
+    dec_a,
+    e1_a,
+    e2_a,
+    weights_a,
+    ra_b,
+    dec_b,
+    e1_b,
+    e2_b,
     theta_min_amin=2,
     theta_max_amin=200,
     n_theta=20,
+    output_base_path=None,
 ):
-    """Correlation 12 22.
+    """Correlation ab bb.
 
-    Shear correlation functions between two samples 1 and 2.
-    Compute xi_12 and xi_22.
+    Shear correlation functions between two samples a and b.
+    Compute xi_ab and xi_bb.
 
     Parameters
     ----------
-    ra_1, dec_1 : array of float
-        coordinates of sample 1
-    e1_1, e2_1 : array of float
-        ellipticities of sample 1
-    weights_1 : array of float
-        weights of sample 1
-    ra_2, dec_2 : array of float
-        coordinates of sample 2
-    e1_2, e2_2 : array of float
-        ellipticities of sample 2
+    ra_a, dec_a : array of float
+        coordinates of sample a
+    e1_a, e2_a : array of float
+        ellipticities of sample a
+    weights_a : array of float
+        weights of sample a
+    ra_b, dec_b : array of float
+        coordinates of sample b
+    e1_b, e2_b : array of float
+        ellipticities of sample b
     theta_min_amin : float, optional
         minimum angular scale in arcmin, default is 2
     theta_max_amin : float, optional
         maximum angular scale in arcmin, default is 200
     n_theta : int, optional
         number of angular scales, default is 20
+    out_base_path : str, optional
+        output file base path; default is ``None`` (no files written)
 
     Returns
     -------
-    xi_12, xi_22 : correlations
-        correlations 12, and 22
+    xi_ab, xi_bb : correlations
+        correlations ab, and bb
 
     """
-    r_corr_12 = xi_star_gal_tc(
-        ra_1,
-        dec_1,
-        e1_1,
-        e2_1,
-        weights_1,
-        ra_2,
-        dec_2,
-        e1_2,
-        e2_2,
+    if output_base_path:
+        output_path_ab = f"{output_base_path}_a_b.txt"
+        output_path_aa = f"{output_base_path}_a_a.txt"
+    else:
+        output_path_ab = None
+        output_path_aa = None
+
+    r_corr_ab = xi_a_b(
+        ra_a,
+        dec_a,
+        e1_a,
+        e2_a,
+        weights_a,
+        ra_b,
+        dec_b,
+        e1_b,
+        e2_b,
         theta_min_amin=theta_min_amin,
         theta_max_amin=theta_max_amin,
         n_theta=n_theta,
+        output_path=output_path_ab,
     )
-    r_corr_22 = xi_star_gal_tc(
-        ra_2,
-        dec_2,
-        e1_2,
-        e2_2,
-        np.ones_like(ra_2),
-        ra_2,
-        dec_2,
-        e1_2,
-        e2_2,
+    r_corr_bb = xi_a_b(
+        ra_b,
+        dec_b,
+        e1_b,
+        e2_b,
+        np.ones_like(ra_b),
+        ra_b,
+        dec_b,
+        e1_b,
+        e2_b,
         theta_min_amin=theta_min_amin,
         theta_max_amin=theta_max_amin,
         n_theta=n_theta,
+        output_path=output_path_aa,
     )
 
-    return r_corr_12, r_corr_22
+    return r_corr_ab, r_corr_bb
 
 
-def alpha(r_corr_gp, r_corr_pp, e1_gal, e2_gal, weights_gal, e1_star, e2_star):
+def correlation_ab_bb_matrix(
+    ra_a,
+    dec_a,
+    e1_a,
+    e2_a,
+    weights_a,
+    ra_b,
+    dec_b,
+    e1_b,
+    e2_b,
+    theta_min_amin=2,
+    theta_max_amin=200,
+    n_theta=20,
+):
+    """Correlation ab bb Matrix.
+
+    Shear correlation function matrices between two samples a and b.
+    Computes the xi_ab and xi_bb matrices.
+
+    Parameters
+    ----------
+    ra_a, dec_a : numpy.ndarray
+        coordinates of sample a
+    e1_a, e2_a : numpy.ndarray
+        ellipticities of sample a
+    weights_a : numpy.ndarray
+        weights of sample a
+    ra_b, dec_b : numpy.ndarray
+        coordinates of sample b
+    e1_b, e2_b : numpy.ndarray
+        ellipticities of sample b
+    theta_min_amin : float, optional
+        minimum angular scale in arcmin; default is 2
+    theta_max_amin : float, optional
+        maximum angular scale in arcmin; default is 200
+    n_theta : int, optional
+        number of angular scales; default is 20
+
+    Returns
+    -------
+    treecorr.GGCorrelation
+        correlations ab
+    treecorr.GGCorrelation
+        correlations bb
+
+    """
+    # Create zero arrays for both samples
+    ell_a_zero = np.zeros_like(e1_a)
+    ell_b_zero = np.zeros_like(e1_b)
+
+    xi_ab = np.zeros((2, 2), dtype=treecorr.GGCorrelation)
+    xi_bb = np.zeros((2, 2), dtype=treecorr.GGCorrelation)
+    ell_a = np.empty(shape=(2, len(e1_a)))
+    ell_b = np.empty(shape=(2, len(e1_b)))
+
+    # We know that xi_+ = xi_tt + xi_xx = xi_11 + xi_22
+    # To only get one component "xi_11", we need to set
+    # the other to zero.
+    # xi_ab_11 = <e1_a e1_b>; e2_a = e2_b = 0
+    # xi_ab_22 = <e2_a e2_b>; e1_a = e1_b = 0
+    # xi_ab_12 = <e1_a e2_b>; e2_a = e1_b = 0
+    # xi_ab_21 = <e2_a e1_b>; e1_a = e2_b = 0
+
+    ell_a[0] = e1_a
+    ell_a[1] = e2_a
+
+    ell_b[0] = e1_b
+    ell_b[1] = e2_b
+
+    for idx in (0, 1):
+        for jdx in (0, 1):
+            xi_ab[idx][jdx] = xi_a_b(
+                ra_a,
+                dec_a,
+                ell_a[idx],
+                ell_a_zero,
+                weights_a,
+                ra_b,
+                dec_b,
+                ell_b[jdx],
+                ell_b_zero,
+                theta_min_amin=theta_min_amin,
+                theta_max_amin=theta_max_amin,
+                n_theta=n_theta,
+            )
+            xi_bb[idx][jdx] = xi_a_b(
+                ra_b,
+                dec_b,
+                ell_b[idx],
+                ell_b_zero,
+                np.ones_like(ra_b),
+                ra_b,
+                dec_b,
+                ell_b[jdx],
+                ell_b_zero,
+                theta_min_amin=theta_min_amin,
+                theta_max_amin=theta_max_amin,
+                n_theta=n_theta,
+            )
+
+    return xi_ab, xi_bb
+
+
+def alpha(
+    r_corr_gp,
+    r_corr_pp,
+    e1_gal,
+    e2_gal,
+    weights_gal,
+    e1_star,
+    e2_star,
+    fast=False,
+):
     """Alpha.
 
     Compute scale-dependent PSF leakage alpha.
@@ -344,23 +465,58 @@ def alpha(r_corr_gp, r_corr_pp, e1_gal, e2_gal, weights_gal, e1_star, e2_star):
         galaxy weights
     e1_star, e2_star : array of float
         galaxy ellipticities
+    fast: bool, optional
+        omits (time-consuming) calculation of mean ellipticity and neglects
+        those small terms if True; default is ``False``
 
     Returns
     -------
     alpha, sig_alpha : float
         mean and std of alpha
-    """
-    complex_gal = (
-        np.average(e1_gal, weights=weights_gal)
-        + np.average(e2_gal, weights=weights_gal) * 1j
-    )
-    complex_psf = np.mean(e1_star) + np.mean(e2_star) * 1j
 
-    alpha_leak = (r_corr_gp.xip - np.real(np.conj(complex_gal) * complex_psf)) / (
-        r_corr_pp.xip - np.abs(complex_psf) ** 2
+    """
+    if not fast:
+        # <e^g>
+        complex_gal = (
+            np.average(e1_gal, weights=weights_gal)
+            + np.average(e2_gal, weights=weights_gal) * 1j
+        )
+        # <e^p>
+        complex_psf = np.mean(e1_star) + np.mean(e2_star) * 1j
+        mean_in_numer = np.real(np.conj(complex_gal) * complex_psf)
+        mean_in_denom = np.abs(complex_psf) ** 2
+    else:
+        # Set mean ellipticities to zero for faster computation
+        mean_in_numer = 0
+        mean_in_denom = 0
+
+
+    alpha_leak = (
+        (r_corr_gp.xip - mean_in_numer)
+        / (r_corr_pp.xip - mean_in_denom)
     )
     sig_alpha_leak = np.abs(alpha_leak) * np.sqrt(
-        r_corr_gp.varxip / r_corr_gp.xip**2 + r_corr_pp.varxip / r_corr_pp.xip**2
+        r_corr_gp.varxip / r_corr_gp.xip ** 2
+        + r_corr_pp.varxip / r_corr_pp.xip ** 2
     )
 
     return alpha_leak, sig_alpha_leak
+
+
+def check_consistency_scales(xi_a, xi_b):
+    """Check Consistency Scales.
+
+    Print warning if angular scales between two correlation results do
+    not match.
+
+    Parameters
+    ----------
+    xi_a : treecorr.GGCorrelation
+        correlation a
+    xi_b : treecorr.GGCorrelation
+        correlation b
+
+    """
+
+    if any(np.abs(xi_a.meanr - xi_b.meanr) / xi_a.meanr > 0.1):
+        print("Warning: angular scales not conr_corr_gpsistent")
