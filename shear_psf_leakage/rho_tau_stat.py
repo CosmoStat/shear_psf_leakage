@@ -1126,8 +1126,21 @@ class PSFErrorFit():
         """
         if cov_type=='rho':
             self.cov_rho = np.load(self.data_directory+'/'+filename)
+            #Reshape the covariance if needed
+            nbins = self.rho_stat_handler.rho_stats['theta'].shape[0]
+            if not self.use_eta:
+                self.cov_rho = self.cov_rho[:3*nbins, :3*nbins]
+            #Check shape
+            target_shape = 6*nbins if self.use_eta else 3*nbins
+            assert self.cov_rho.shape[0] == target_shape, "The shape of the covariance matrix is not correct."
         else:
             self.cov_tau = np.load(self.data_directory+'/'+filename)
+            nbins = self.tau_stat_handler.tau_stats['theta'].shape[0]
+            if not self.use_eta:
+                self.cov_tau = self.cov_tau[:2*nbins, :2*nbins]
+            #Check shape
+            target_shape = 3*nbins if self.use_eta else 2*nbins
+            assert self.cov_tau.shape[0] == target_shape, "The shape of the covariance matrix is not correct."
 
     def init_log_prior(self, low_alpha=-2.0, high_alpha=2.0, low_beta=-10.0, high_beta=10.0, low_eta=-20.0, high_eta=20.0):
         """
