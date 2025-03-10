@@ -60,7 +60,7 @@ class CovTauTh:
         cat_gal, cat_psf = fits.getdata(path_gal), fits.open(path_psf)[hdu_psf].data
 
         nside = kwargs.get("nside", 2**12)
-        self.A = self.get_area(cat_gal, nside)
+        self.A = self.get_area(cat_gal, nside)*60*60 #area in arcmin^2
         self.n_e = self.get_effective_number_density(cat_gal)
 
         #Create treecorr catalogs
@@ -234,7 +234,7 @@ class CovTauTh:
         float
             Effective number density of the catalog in arcmin-2
         """
-        return 1/(self.A*60*60)*(np.sum(cat_gal[self._params['w_col']]))**2/np.sum(cat_gal[self._params['w_col']]**2)
+        return 1/(self.A)*(np.sum(cat_gal[self._params['w_col']]))**2/np.sum(cat_gal[self._params['w_col']]**2)
 
     def create_treecorr_catalog(self, cat_gal, cat_psf):
         """
