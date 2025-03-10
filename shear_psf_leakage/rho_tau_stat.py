@@ -669,7 +669,7 @@ class RhoStat():
                 rhos += [rho_3, rho_4, rho_5]
             cov = treecorr.estimate_multi_cov(rhos, var_method, func)
 
-            use_eta_str = '_use_eta_T' if self.use_eta else '_use_eta_F'
+            use_eta_str = '' if self.use_eta else 'no_eta'
             np.save(self.catalogs._output+'/'+'cov_rho_'+catalog_id+use_eta_str, cov)
 
         self.save_rho_stats(filename) #A bit dirty just because of consistency of the datatype
