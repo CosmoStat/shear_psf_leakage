@@ -218,7 +218,7 @@ class CovTauTh:
 
         mask = (n_map != 0)
 
-        return np.sum(mask)*hp.nside2pixarea(nside)
+        return np.sum(mask)*hp.nside2pixarea(nside, degrees=True)
 
     def get_effective_number_density(self, cat_gal):
         """
