@@ -5,6 +5,7 @@ Author: Sacha Guerrini
 """
 
 import numpy as np
+import healpy as hp
 from astropy.io import fits
 
 import scipy.integrate as integrate
@@ -25,9 +26,6 @@ class CovTauTh:
         path_psf,
         hdu_psf,
         treecorr_config,
-        A,
-        n_e,
-        n_psf,
         params=None,
         use_eta=True,
         **kwargs):
@@ -45,21 +43,12 @@ class CovTauTh:
             HDU of the PSF catalog
         treecorr_config: dict
             Configuration of the treecorr catalogs
-        A: float
-            Area of the survey
-        n_e: float
-            Number density of galaxies
-        n_psf: float
-            Number density of PSF stars
         params: dict
             Parameters of the class
         use_eta: bool
             if True, compute the covariance matrix of the tau statistics using the eta statistics. Default is True.
         """
         self.treecorr_config = treecorr_config
-        self.A = A
-        self.n_e = n_e
-        self.n_psf = n_psf
         self.use_eta = use_eta
 
         if params is None:
@@ -69,6 +58,10 @@ class CovTauTh:
 
         #Load the catalogs
         cat_gal, cat_psf = fits.getdata(path_gal), fits.open(path_psf)[hdu_psf].data
+
+        nside = kwargs.get("nside", 2**12)
+        self.A = self.get_area(cat_gal, nside)*60*60 #area in arcmin^2
+        self.n_e = self.get_effective_number_density(cat_gal)
 
         #Create treecorr catalogs
         self.gal, self.psf, self.psf_error, self.size_error = self.create_treecorr_catalog(cat_gal, cat_psf)
@@ -192,6 +185,56 @@ class CovTauTh:
         Initialize the parameters to the given configuration. Can also update the current params.
         """
         self._params = params
+
+    def get_area(self, cat_gal, nside):
+        """
+        Compute the area of the catalog using the healpy package.
+
+        Parameters
+        ----------
+        cat: numpy.ndarray
+            Catalog of galaxies
+        nside: int
+            Nside of the healpix map
+        
+        Returns
+        -------
+        float
+            Area of the catalog
+        """
+        ra = cat_gal[self._params['ra_col']]
+        dec = cat_gal[self._params['dec_col']]
+
+        theta = (90 - dec) * np.pi / 180
+        phi = ra * np.pi / 180
+        
+        pix = hp.ang2pix(nside, theta, phi)
+
+        n_map = np.zeros(hp.nside2npix(nside))
+
+        unique_pix, idx, idx_pix = np.unique(pix, return_index=True, return_inverse=True)
+
+        n_map[unique_pix] += np.bincount(idx_pix, weights=cat_gal[self._params['w_col']])
+
+        mask = (n_map != 0)
+
+        return np.sum(mask)*hp.nside2pixarea(nside, degrees=True)
+
+    def get_effective_number_density(self, cat_gal):
+        """
+        Compute the effective number density of the catalog
+
+        Parameters
+        ----------
+        cat: numpy.ndarray
+            Catalog of galaxies
+        
+        Returns
+        -------
+        float
+            Effective number density of the catalog in arcmin-2
+        """
+        return 1/(self.A)*(np.sum(cat_gal[self._params['w_col']]))**2/np.sum(cat_gal[self._params['w_col']]**2)
 
     def create_treecorr_catalog(self, cat_gal, cat_psf):
         """
