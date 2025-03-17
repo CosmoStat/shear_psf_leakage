@@ -771,15 +771,17 @@ class LeakageScale:
 
         """
         # Set some x-values and limits for plot
+        factor = 0.9
+        x0 = self._params["theta_min_amin"]
         if xlinlog == "log":
-            x0 = self._params["theta_min_amin"]
+            x0 = x0 * factor
             x_affine = np.geomspace(x0, self._params["theta_max_amin"])
             xlim = [x0, self._params["theta_max_amin"]]
             xlog = True
         else:
-            x0 = -10
-            x_affine = np.linspace(0, self._params["theta_max_amin"])
-            xlim = [x0 * 2, self._params["theta_max_amin"]]
+            x0 = x0 ** factor
+            x_affine = np.linspace(x0, self._params["theta_max_amin"])
+            xlim = [x0, self._params["theta_max_amin"]]
             xlog = False
 
         # alpha(theta) data points
@@ -1155,6 +1157,38 @@ class LeakageScale:
             mat.append(self.alpha_leak_ufloat[ndx][idx, jdx])
 
         return np.array(mat)
+    
+    def compute_alpha_spin_coeffs(self):
+        """Compute Alpha Spin Coefficients.
+        
+        Compute the spin coefficients of the PSF leakage alpha(theta) from
+        the matrix elements.
+        
+        """
+        self._alpha_0_r = (
+            0.5 * (
+                self.get_alpha_ufloat(0, 0)
+                + self.get_alpha_ufloat(1, 1)
+            )
+        )
+        self._alpha_0_i = (
+            0.5 * (
+                -self.get_alpha_ufloat(0, 1)
+                + self.get_alpha_ufloat(1, 0)
+            )
+        )
+        self._alpha_4_r = (
+            0.5 * (
+                self.get_alpha_ufloat(0, 0)
+                - self.get_alpha_ufloat(1, 1)
+            )
+        )
+        self._alpha_4_i = (
+            0.5 * (
+                self.get_alpha_ufloat(0, 1)
+                + self.get_alpha_ufloat(1, 0)
+            )
+        )
 
     def do_alpha_matrix(self):
         """Do Alpha Matrix.
