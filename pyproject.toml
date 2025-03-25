@@ -23,7 +23,7 @@ jupytext = "^1.15.1"
 pandas = "^2.0.3"
 camb = "^1.5.0"
 
-scipy = "^1.11.3"
+scipy = ">=1.11.3"
 
 notebook = "5.7.4"
 jupyter-server = "^2.8.0"
