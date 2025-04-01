@@ -21,7 +21,7 @@ stats = "^0.1.2a0"
 jupyter = "^1.0.0"
 jupytext = "^1.15.1"
 pandas = "^2.0.3"
-camb = "^1.5.0"
+camb = "^1.5.9"
 
 scipy = ">=1.11.3"
 
