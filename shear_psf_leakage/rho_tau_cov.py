@@ -5,6 +5,7 @@ Author: Sacha Guerrini
 """
 
 import numpy as np
+import healpy as hp
 from astropy.io import fits
 
 import scipy.integrate as integrate
@@ -25,9 +26,6 @@ class CovTauTh:
         path_psf,
         hdu_psf,
         treecorr_config,
-        A,
-        n_e,
-        n_psf,
         params=None,
         use_eta=True,
         **kwargs):
@@ -45,21 +43,12 @@ class CovTauTh:
             HDU of the PSF catalog
         treecorr_config: dict
             Configuration of the treecorr catalogs
-        A: float
-            Area of the survey
-        n_e: float
-            Number density of galaxies
-        n_psf: float
-            Number density of PSF stars
         params: dict
             Parameters of the class
         use_eta: bool
             if True, compute the covariance matrix of the tau statistics using the eta statistics. Default is True.
         """
         self.treecorr_config = treecorr_config
-        self.A = A
-        self.n_e = n_e
-        self.n_psf = n_psf
         self.use_eta = use_eta
 
         if params is None:
@@ -69,6 +58,10 @@ class CovTauTh:
 
         #Load the catalogs
         cat_gal, cat_psf = fits.getdata(path_gal), fits.open(path_psf)[hdu_psf].data
+
+        nside = kwargs.get("nside", 2**12)
+        self.A = self.get_area(cat_gal, nside)*60*60 #area in arcmin^2
+        self.n_e = self.get_effective_number_density(cat_gal)
 
         #Create treecorr catalogs
         self.gal, self.psf, self.psf_error, self.size_error = self.create_treecorr_catalog(cat_gal, cat_psf)
@@ -192,6 +185,56 @@ class CovTauTh:
         Initialize the parameters to the given configuration. Can also update the current params.
         """
         self._params = params
+
+    def get_area(self, cat_gal, nside):
+        """
+        Compute the area of the catalog using the healpy package.
+
+        Parameters
+        ----------
+        cat: numpy.ndarray
+            Catalog of galaxies
+        nside: int
+            Nside of the healpix map
+        
+        Returns
+        -------
+        float
+            Area of the catalog
+        """
+        ra = cat_gal[self._params['ra_col']]
+        dec = cat_gal[self._params['dec_col']]
+
+        theta = (90 - dec) * np.pi / 180
+        phi = ra * np.pi / 180
+        
+        pix = hp.ang2pix(nside, theta, phi)
+
+        n_map = np.zeros(hp.nside2npix(nside))
+
+        unique_pix, idx, idx_pix = np.unique(pix, return_index=True, return_inverse=True)
+
+        n_map[unique_pix] += np.bincount(idx_pix, weights=cat_gal[self._params['w_col']])
+
+        mask = (n_map != 0)
+
+        return np.sum(mask)*hp.nside2pixarea(nside, degrees=True)
+
+    def get_effective_number_density(self, cat_gal):
+        """
+        Compute the effective number density of the catalog
+
+        Parameters
+        ----------
+        cat: numpy.ndarray
+            Catalog of galaxies
+        
+        Returns
+        -------
+        float
+            Effective number density of the catalog in arcmin-2
+        """
+        return 1/(self.A)*(np.sum(cat_gal[self._params['w_col']]))**2/np.sum(cat_gal[self._params['w_col']]**2)
 
     def create_treecorr_catalog(self, cat_gal, cat_psf):
         """
@@ -477,9 +520,9 @@ class CovTauTh:
         for i in range(len(self.bins)):
             for j in range(len(self.bins)):
                 y = np.sqrt(self.bins[i]**2+self.bins[j]**2-2*self.bins[i]*self.bins[j]*np.cos(phi))
-                mt[i, j] = integrate.simps(interpolator_rho(y), phi)*self.sigma_e/(2*np.pi*self.A*self.n_e)
+                mt[i, j] = integrate.simpson(interpolator_rho(y), phi)*self.sigma_e/(2*np.pi*self.A*self.n_e)
                 if sigma_bc is not None:
-                    mt[i, j] += integrate.simps(interpolator_xi_plus(y), phi)*sigma_bc/(2*np.pi*self.A*self.n_e)
+                    mt[i, j] += integrate.simpson(interpolator_xi_plus(y), phi)*sigma_bc/(2*np.pi*self.A*self.n_e)
         return mt
     
     def compute_cv_rho_plus(self, component, **kwargs):
@@ -514,12 +557,12 @@ class CovTauTh:
                 #Compute i,j term
                 y_m = np.sqrt(phi_radius[:, None]**2+self.bins[i]**2-2*phi_radius[:, None]*self.bins[i]*np.cos(phi_angle))
                 y_p = np.sqrt(phi_radius[:, None]**2+self.bins[j]**2+2*phi_radius[:, None]*self.bins[j]*np.cos(phi_angle))
-                int_xi_m = integrate.simps(interpolator_xi(y_m), phi_angle)
-                int_xi_p = integrate.simps(interpolator_xi(y_p), phi_angle)
-                int_rho_m = integrate.simps(interpolator_rho(y_m), phi_angle)
-                int_rho_p = integrate.simps(interpolator_rho(y_p), phi_angle)
+                int_xi_m = integrate.simpson(interpolator_xi(y_m), phi_angle)
+                int_xi_p = integrate.simpson(interpolator_xi(y_p), phi_angle)
+                int_rho_m = integrate.simpson(interpolator_rho(y_m), phi_angle)
+                int_rho_p = integrate.simpson(interpolator_rho(y_p), phi_angle)
                 radius_val = 0.5*(int_xi_m*int_rho_p*phi_radius+int_xi_p*int_rho_m*phi_radius)
-                cv[i, j] = integrate.simps(radius_val, phi_radius)*1/(np.pi*self.A)
+                cv[i, j] = integrate.simpson(radius_val, phi_radius)*1/(np.pi*self.A)
         return cv
 
     def compute_cv_tau_plus(self, component, **kwargs):
@@ -553,12 +596,12 @@ class CovTauTh:
             for j in range(len(self.bins)):
                 y_m = np.sqrt(phi_radius[:, None]**2+self.bins[i]**2-2*phi_radius[:, None]*self.bins[i]*np.cos(phi_angle))
                 y_p = np.sqrt(phi_radius[:, None]**2+self.bins[j]**2+2*phi_radius[:, None]*self.bins[j]*np.cos(phi_angle))
-                int_tau_b_m = integrate.simps(interpolator_tau_b(y_m), phi_angle)
-                int_tau_b_p = integrate.simps(interpolator_tau_b(y_p), phi_angle)
-                int_tau_c_m = integrate.simps(interpolator_tau_c(y_m), phi_angle)
-                int_tau_c_p = integrate.simps(interpolator_tau_c(y_p), phi_angle)
+                int_tau_b_m = integrate.simpson(interpolator_tau_b(y_m), phi_angle)
+                int_tau_b_p = integrate.simpson(interpolator_tau_b(y_p), phi_angle)
+                int_tau_c_m = integrate.simpson(interpolator_tau_c(y_m), phi_angle)
+                int_tau_c_p = integrate.simpson(interpolator_tau_c(y_p), phi_angle)
                 radius_val = 0.5*(int_tau_b_m*int_tau_c_p+int_tau_b_p*int_tau_c_m)*phi_radius
-                cv[i, j] = integrate.simps(radius_val, phi_radius)*1/(np.pi*self.A)
+                cv[i, j] = integrate.simpson(radius_val, phi_radius)*1/(np.pi*self.A)
         return cv
     
     def compute_cv_minus(self, component, **kwargs):
@@ -607,25 +650,25 @@ class CovTauTh:
                 polar_b = np.arctan2(psi_b_y, psi_b_x)
 
                 # Compute integrals using vectorized operations
-                int_tau_b_cos = integrate.simps(interpolator_tau_b(norm_a) * np.cos(4 * polar_a), phi_angle, axis=2)
-                int_tau_c_cos = integrate.simps(interpolator_tau_c(norm_b) * np.cos(4 * polar_b), phi_angle, axis=2)
-                int_tau_b_sin = integrate.simps(interpolator_tau_b(norm_a) * np.sin(4 * polar_a), phi_angle, axis=2)
-                int_tau_c_sin = integrate.simps(interpolator_tau_c(norm_b) * np.sin(4 * polar_b), phi_angle, axis=2)
-                int_xi_cos = integrate.simps(interpolator_xi(norm_a) * np.cos(4 * polar_a), phi_angle, axis=2)
-                int_rho_cos = integrate.simps(interpolator_rho(norm_b) * np.cos(4 * polar_b), phi_angle, axis=2)
-                int_xi_sin = integrate.simps(interpolator_xi(norm_a) * np.sin(4 * polar_a), phi_angle, axis=2)
-                int_rho_sin = integrate.simps(interpolator_rho(norm_b) * np.sin(4 * polar_b), phi_angle, axis=2)
+                int_tau_b_cos = integrate.simpson(interpolator_tau_b(norm_a) * np.cos(4 * polar_a), phi_angle, axis=2)
+                int_tau_c_cos = integrate.simpson(interpolator_tau_c(norm_b) * np.cos(4 * polar_b), phi_angle, axis=2)
+                int_tau_b_sin = integrate.simpson(interpolator_tau_b(norm_a) * np.sin(4 * polar_a), phi_angle, axis=2)
+                int_tau_c_sin = integrate.simpson(interpolator_tau_c(norm_b) * np.sin(4 * polar_b), phi_angle, axis=2)
+                int_xi_cos = integrate.simpson(interpolator_xi(norm_a) * np.cos(4 * polar_a), phi_angle, axis=2)
+                int_rho_cos = integrate.simpson(interpolator_rho(norm_b) * np.cos(4 * polar_b), phi_angle, axis=2)
+                int_xi_sin = integrate.simpson(interpolator_xi(norm_a) * np.sin(4 * polar_a), phi_angle, axis=2)
+                int_rho_sin = integrate.simpson(interpolator_rho(norm_b) * np.sin(4 * polar_b), phi_angle, axis=2)
 
 
                 # Compute int_angle in a vectorized manner
                 int_angle = int_tau_b_cos * int_tau_c_cos + int_tau_b_sin * int_tau_c_sin + int_xi_cos * int_rho_cos + int_xi_sin * int_rho_sin
 
                 # Integrate int_angle over phi_angle for each phi_radius
-                int_varphi = integrate.simps(int_angle, phi_angle, axis=1)
+                int_varphi = integrate.simpson(int_angle, phi_angle, axis=1)
 
                 # Compute radius_val in a vectorized manner
                 radius_val = int_varphi * phi_radius
-                cv[i, j] = integrate.simps(radius_val, phi_radius)*1/(2*(2*np.pi)**2*self.A)
+                cv[i, j] = integrate.simpson(radius_val, phi_radius)*1/(2*(2*np.pi)**2*self.A)
         return cv
 
 

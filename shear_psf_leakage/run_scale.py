@@ -583,7 +583,7 @@ class LeakageScale:
         list
             e2
         list
-            weights; `None` if cat_type is "star"
+            weights; empty list if cat_type is "star"
 
         """
         if cat_type == "gal":
@@ -600,7 +600,7 @@ class LeakageScale:
             dec = self.dat_PSF[self._params["dec_star_col"]]
             e1 = self.dat_PSF[self._params["e1_PSF_star_col"]]
             e2 = self.dat_PSF[self._params["e2_PSF_star_col"]]
-            weights = None
+            weights = []
 
         return ra, dec, e1, e2, weights
 

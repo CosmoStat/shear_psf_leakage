@@ -568,7 +568,7 @@ class RhoStat():
         if self.use_eta:
             self.rho_stats = Table(
                 [
-                    rho_0.meanr,
+                    rho_0.rnom,
                     rho_0.xip,
                     rho_0.varxip,
                     rho_0.xim,
@@ -626,7 +626,7 @@ class RhoStat():
         else:
             self.rho_stats = Table(
                 [
-                    rho_0.meanr,
+                    rho_0.rnom,
                     rho_0.xip,
                     rho_0.varxip,
                     rho_0.xim,
@@ -669,7 +669,7 @@ class RhoStat():
                 rhos += [rho_3, rho_4, rho_5]
             cov = treecorr.estimate_multi_cov(rhos, var_method, func)
 
-            use_eta_str = '_use_eta_T' if self.use_eta else '_use_eta_F'
+            use_eta_str = '' if self.use_eta else 'no_eta'
             np.save(self.catalogs._output+'/'+'cov_rho_'+catalog_id+use_eta_str, cov)
 
         self.save_rho_stats(filename) #A bit dirty just because of consistency of the datatype
@@ -897,7 +897,7 @@ class TauStat():
 
             self.tau_stats = Table(
                 [
-                    tau_0.meanr,
+                    tau_0.rnom,
                     tau_0.xip,
                     tau_0.varxip,
                     tau_0.xim,
@@ -932,7 +932,7 @@ class TauStat():
 
             self.tau_stats = Table(
                 [
-                    tau_0.meanr,
+                    tau_0.rnom,
                     tau_0.xip,
                     tau_0.varxip,
                     tau_0.xim,
@@ -966,7 +966,7 @@ class TauStat():
                 taus += [tau_5]
             cov = treecorr.estimate_multi_cov(taus, var_method, func)
 
-            use_eta_str = '_use_eta_T' if self.use_eta else '_use_eta_F'
+            use_eta_str = '' if self.use_eta else 'no_eta'
             np.save(self.catalogs._output+'/'+'cov_tau_'+catalog_id+use_eta_str, cov)
 
         self.save_tau_stats(filename) #A bit dirty just because of consistency of the datatype :/
@@ -1142,8 +1142,21 @@ class PSFErrorFit():
         """
         if cov_type=='rho':
             self.cov_rho = np.load(self.data_directory+'/'+filename)
+            #Reshape the covariance if needed
+            nbins = self.rho_stat_handler.rho_stats['theta'].shape[0]
+            if not self.use_eta:
+                self.cov_rho = self.cov_rho[:3*nbins, :3*nbins]
+            #Check shape
+            target_shape = 6*nbins if self.use_eta else 3*nbins
+            assert self.cov_rho.shape[0] == target_shape, "The shape of the covariance matrix is not correct."
         else:
             self.cov_tau = np.load(self.data_directory+'/'+filename)
+            nbins = self.tau_stat_handler.tau_stats['theta'].shape[0]
+            if not self.use_eta:
+                self.cov_tau = self.cov_tau[:2*nbins, :2*nbins]
+            #Check shape
+            target_shape = 3*nbins if self.use_eta else 2*nbins
+            assert self.cov_tau.shape[0] == target_shape, "The shape of the covariance matrix is not correct."
 
     def init_log_prior(self, low_alpha=-2.0, high_alpha=2.0, low_beta=-10.0, high_beta=10.0, low_eta=-20.0, high_eta=20.0):
         """
