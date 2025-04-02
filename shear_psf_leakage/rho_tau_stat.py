@@ -5,6 +5,7 @@ Author: Sacha Guerrini
 """
 
 from tqdm import tqdm
+import warnings
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -234,7 +235,7 @@ class Catalogs():
         if output is not None:
             self._output = output
 
-    def read_shear_cat(self, path_gal, path_psf, hdu=1):
+    def read_shear_cat(self, path_gal, path_psf, hdu=1, store=False):
         """
         read_shear_cat
 
@@ -247,11 +248,13 @@ class Catalogs():
         """
         assert ((path_gal is not None) or (path_psf is not None)), ("Please specify a path for the shear catalog you want to read.")
         if path_gal is not None:
-            self.dat_shear = fits.getdata(path_gal, ext=hdu)
+            dat_shear = fits.getdata(path_gal, ext=hdu)
+            return dat_shear
         if path_psf is not None:
-            self.dat_psf = fits.getdata(path_psf, ext=hdu)
+            dat_psf = fits.getdata(path_psf, ext=hdu)
+            return dat_psf
 
-    def get_cat_fields(self, cat_type, square_size=False):
+    def get_cat_fields(self, cat, cat_type, square_size=False):
         """
         Get Cat Fields
 
@@ -259,6 +262,8 @@ class Catalogs():
 
         Parameters
         ----------
+        cat : str
+            catalogue of galaxies or stars. Type should match the cat_type given in argument.
         cat_type : str
             catalogue type, allowed are 'gal', 'psf', 'psf_error' or 'psf_size_error'
 
@@ -291,48 +296,46 @@ class Catalogs():
 
         if cat_type=="gal":
             if self._params["w_col"] is not None:
-                weights = self.dat_shear[self._params["w_col"]]
+                weights = cat[self._params["w_col"]]
             else:
                 weights = np.ones_like(ra)
-            assert self.dat_shear is not None, ("Check you read the shear catalogs correctly.")
-            ra = self.dat_shear[self._params["ra_col"]]
-            dec = self.dat_shear[self._params["dec_col"]]
-            g1 = self.dat_shear[self._params["e1_col"]] - np.average(self.dat_shear[self._params["e1_col"]], weights=weights)
-            g2 = self.dat_shear[self._params["e2_col"]] - np.average(self.dat_shear[self._params["e2_col"]], weights=weights)
+            ra = cat[self._params["ra_col"]]
+            dec = cat[self._params["dec_col"]]
+            g1 = cat[self._params["e1_col"]] - np.average(cat[self._params["e1_col"]], weights=weights)
+            g2 = cat[self._params["e2_col"]] - np.average(cat[self._params["e2_col"]], weights=weights)
             if self._params.get("R11", None) is not None:
                 g1 /= self._params["R11"]
             if self._params.get("R22", None) is not None:
                 g2 /= self._params["R22"]
         else:
-            assert self.dat_psf is not None, ("Check you read the shear catalogs correctly.")
             #Add a mask?
             #mask = (self.dat_psf[self._params["FLAG_PSF_HSM"]]==0) & (self.dat_psf[self._params["FLAG_STAR_HSM"]]==0)
-            ra = self.dat_psf[self._params["ra_col"]]
-            dec = self.dat_psf[self._params["dec_col"]]
+            ra = cat[self._params["ra_col"]]
+            dec = cat[self._params["dec_col"]]
             weights = None
 
             if cat_type=="psf":
-                g1 = self.dat_psf[self._params["e1_PSF_col"]]# - self.dat_psf[self._params["e1_PSF_col"]].mean()
-                g2 = self.dat_psf[self._params["e2_PSF_col"]]# - self.dat_psf[self._params["e2_PSF_col"]].mean()
+                g1 = cat[self._params["e1_PSF_col"]]# - cat[self._params["e1_PSF_col"]].mean()
+                g2 = cat[self._params["e2_PSF_col"]]# - cat[self._params["e2_PSF_col"]].mean()
 
             elif cat_type=="psf_error":
-                g1 = (self.dat_psf[self._params["e1_star_col"]] - self.dat_psf[self._params["e1_PSF_col"]])
+                g1 = (cat[self._params["e1_star_col"]] - cat[self._params["e1_PSF_col"]])
                 #g1 -= g1.mean()
-                g2 = (self.dat_psf[self._params["e2_star_col"]] - self.dat_psf[self._params["e2_PSF_col"]])
+                g2 = (cat[self._params["e2_star_col"]] - cat[self._params["e2_PSF_col"]])
                 #g2 -= g2.mean()
 
             else:
-                size_star = self.dat_psf[self._params["star_size"]]**2 if square_size else  self.dat_psf[self._params["star_size"]]
-                size_psf = self.dat_psf[self._params["PSF_size"]]**2 if square_size else  self.dat_psf[self._params["PSF_size"]]
+                size_star = cat[self._params["star_size"]]**2 if square_size else  cat[self._params["star_size"]]
+                size_psf = cat[self._params["PSF_size"]]**2 if square_size else  cat[self._params["PSF_size"]]
 
-                g1 = self.dat_psf[self._params["e1_star_col"]] * (size_star - size_psf) / size_star
+                g1 = cat[self._params["e1_star_col"]] * (size_star - size_psf) / size_star
                 #g1 -= g1.mean()
-                g2 = self.dat_psf[self._params["e2_star_col"]] * (size_star - size_psf) / size_star
+                g2 = cat[self._params["e2_star_col"]] * (size_star - size_psf) / size_star
                 #g2 -= g2.mean()
 
         return ra, dec, g1, g2, weights
     
-    def build_catalog(self, cat_type, key, npatch=None, patch_centers=None, square_size=False, mask=False):
+    def build_catalog(self, cat, cat_type, key, npatch=None, patch_centers=None, square_size=False, mask=False):
         """
         build_catalogue
 
@@ -360,11 +363,11 @@ class Catalogs():
         if npatch is None:
             npatch = self._params["patch_number"]
 
-        ra, dec, g1, g2, weights = self.get_cat_fields(cat_type, square_size)
+        ra, dec, g1, g2, weights = self.get_cat_fields(cat, cat_type, square_size)
 
         if mask:
-            flag_psf = self.dat_psf[self._params["PSF_flag"]]
-            flag_star = self.dat_psf[self._params["star_flag"]]
+            flag_psf = cat[self._params["PSF_flag"]]
+            flag_star = cat[self._params["star_flag"]]
             mask_arr = (flag_psf==0) & (flag_star==0)
             if weights is not None:
                 weights = weights[mask_arr]
@@ -372,7 +375,7 @@ class Catalogs():
             mask_arr = np.array([True for i in ra])
 
         if patch_centers is None:
-            cat = treecorr.Catalog(
+            cat_tc = treecorr.Catalog(
                 ra=ra[mask_arr],
                 dec=dec[mask_arr],
                 g1=g1[mask_arr],
@@ -383,7 +386,7 @@ class Catalogs():
                 npatch=npatch
             )
         else:
-            cat = treecorr.Catalog(
+            cat_tc = treecorr.Catalog(
                 ra=ra[mask_arr],
                 dec=dec[mask_arr],
                 g1=g1[mask_arr],
@@ -395,7 +398,7 @@ class Catalogs():
             )
 
         self.catalogs_dict.update(
-            {key: cat}
+            {key: cat_tc}
         )
 
     def delete_catalog(self, key):
@@ -442,12 +445,30 @@ class RhoStat():
     RhoStat
 
     Class to compute the rho statistics (Rowe 2010) of a PSF catalogue.
+
+    Parameters
+    ----------
+    params : dict
+        Dictionary containing the parameters of the class. If None, default parameters are used.
+    output : str
+        Path to the output directory. Default is the current directory.
+    use_eta : bool
+        If True, add correlations with size residuals of the PSF. Default is True.
+    scalar_eta : bool
+        If True, compute correlations with size residuals as correlations between a spin-2 field and a
+        scalar field (GKCorrelator in treecorr). Default is False.
+    treecorr_config : dict
+        Dictionary containing the configuration of the treecorr.GGCorrelation. Default is None.
+    verbose : bool
+        If True, print messages to the terminal. Default is False.
     """
 
     def __init__(
         self,
         params=None,
         output=None,
+        use_eta=True,
+        scalar_eta=False,
         treecorr_config=None,
         verbose=False
     ):
@@ -466,6 +487,12 @@ class RhoStat():
             }
         else:
             self._treecorr_config = treecorr_config
+        self.use_eta = use_eta
+        self.scalar_eta = scalar_eta
+
+        if self.scalar_eta and not self.use_eta:
+            print("Warning: scalar_eta is set to True but use_eta is set to False. Setting use_eta to True.")
+            self.use_eta = True
 
         self.verbose = verbose
 
@@ -491,15 +518,18 @@ class RhoStat():
             HDU number of input FITS file, default is 1
         """
 
-        self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat_star, hdu=hdu)
+        psf_cat = self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat_star, hdu=hdu)
 
         if self.verbose:
             print("Building catalogs...")
 
-        self.catalogs.build_catalog(cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
+        self.catalogs.build_catalog(cat=psf_cat, cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
         patch_centers = self.catalogs.catalogs_dict['psf_'+catalog_id].patch_centers
-        self.catalogs.build_catalog(cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
-        self.catalogs.build_catalog(cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+        self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+        if self.use_eta:
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+
+        del psf_cat
 
         if self.verbose:
             print("Catalogs successfully built...")
@@ -528,68 +558,105 @@ class RhoStat():
         rho_2 = treecorr.GGCorrelation(self._treecorr_config)
         rho_2.process(self.catalogs.get_cat('psf_error_'+catalog_id), self.catalogs.get_cat('psf_'+catalog_id))
         rho_3 = treecorr.GGCorrelation(self._treecorr_config)
-        rho_3.process(self.catalogs.get_cat('psf_size_error_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
-        rho_4 = treecorr.GGCorrelation(self._treecorr_config)
-        rho_4.process(self.catalogs.get_cat('psf_error_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
-        rho_5 = treecorr.GGCorrelation(self._treecorr_config)
-        rho_5.process(self.catalogs.get_cat('psf_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
+        if self.use_eta:
+            rho_3.process(self.catalogs.get_cat('psf_size_error_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
+            rho_4 = treecorr.GGCorrelation(self._treecorr_config)
+            rho_4.process(self.catalogs.get_cat('psf_error_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
+            rho_5 = treecorr.GGCorrelation(self._treecorr_config)
+            rho_5.process(self.catalogs.get_cat('psf_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
 
-        self.rho_stats = Table(
-            [
-                rho_0.meanr,
-                rho_0.xip,
-                rho_0.varxip,
-                rho_0.xim,
-                rho_1.varxim,
-                rho_1.xip,
-                rho_1.varxip,
-                rho_1.xim,
-                rho_1.varxim,
-                rho_2.xip,
-                rho_2.varxip,
-                rho_2.xim,
-                rho_2.varxim,
-                rho_3.xip,
-                rho_3.varxip,
-                rho_3.xim,
-                rho_3.varxim,
-                rho_4.xip,
-                rho_4.varxip,
-                rho_4.xim,
-                rho_4.varxim,
-                rho_5.xip,
-                rho_5.varxip,
-                rho_5.xim,
-                rho_5.varxim,
-            ],
-            names=(
-                'theta',
-                'rho_0_p',
-                'varrho_0_p',
-                'rho_0_m',
-                'varrho_0_m',
-                'rho_1_p',
-                'varrho_1_p',
-                'rho_1_m',
-                'varrho_1_m',
-                'rho_2_p',
-                'varrho_2_p',
-                'rho_2_m',
-                'varrho_2_m',
-                'rho_3_p',
-                'varrho_3_p',
-                'rho_3_m',
-                'varrho_3_m',
-                'rho_4_p',
-                'varrho_4_p',
-                'rho_4_m',
-                'varrho_4_m',
-                'rho_5_p',
-                'varrho_5_p',
-                'rho_5_m',
-                'varrho_5_m',
+        if self.use_eta:
+            self.rho_stats = Table(
+                [
+                    rho_0.rnom,
+                    rho_0.xip,
+                    rho_0.varxip,
+                    rho_0.xim,
+                    rho_0.varxim,
+                    rho_1.xip,
+                    rho_1.varxip,
+                    rho_1.xim,
+                    rho_1.varxim,
+                    rho_2.xip,
+                    rho_2.varxip,
+                    rho_2.xim,
+                    rho_2.varxim,
+                    rho_3.xip,
+                    rho_3.varxip,
+                    rho_3.xim,
+                    rho_3.varxim,
+                    rho_4.xip,
+                    rho_4.varxip,
+                    rho_4.xim,
+                    rho_4.varxim,
+                    rho_5.xip,
+                    rho_5.varxip,
+                    rho_5.xim,
+                    rho_5.varxim,
+                ],
+                names=(
+                    'theta',
+                    'rho_0_p',
+                    'varrho_0_p',
+                    'rho_0_m',
+                    'varrho_0_m',
+                    'rho_1_p',
+                    'varrho_1_p',
+                    'rho_1_m',
+                    'varrho_1_m',
+                    'rho_2_p',
+                    'varrho_2_p',
+                    'rho_2_m',
+                    'varrho_2_m',
+                    'rho_3_p',
+                    'varrho_3_p',
+                    'rho_3_m',
+                    'varrho_3_m',
+                    'rho_4_p',
+                    'varrho_4_p',
+                    'rho_4_m',
+                    'varrho_4_m',
+                    'rho_5_p',
+                    'varrho_5_p',
+                    'rho_5_m',
+                    'varrho_5_m',
+                )
             )
-        )
+
+        else:
+            self.rho_stats = Table(
+                [
+                    rho_0.rnom,
+                    rho_0.xip,
+                    rho_0.varxip,
+                    rho_0.xim,
+                    rho_0.varxim,
+                    rho_1.xip,
+                    rho_1.varxip,
+                    rho_1.xim,
+                    rho_1.varxim,
+                    rho_2.xip,
+                    rho_2.varxip,
+                    rho_2.xim,
+                    rho_2.varxim,
+                ],
+                names=(
+                    'theta',
+                    'rho_0_p',
+                    'varrho_0_p',
+                    'rho_0_m',
+                    'varrho_0_m',
+                    'rho_1_p',
+                    'varrho_1_p',
+                    'rho_1_m',
+                    'varrho_1_m',
+                    'rho_2_p',
+                    'varrho_2_p',
+                    'rho_2_m',
+                    'varrho_2_m',
+                )
+            )
+
 
         if self.verbose:
             print("Done...")
@@ -597,12 +664,15 @@ class RhoStat():
         if save_cov:
             if self.verbose:
                 print("Computing the covariance...")
+            rhos = [rho_0, rho_1, rho_2]
+            if self.use_eta:
+                rhos += [rho_3, rho_4, rho_5]
+            cov = treecorr.estimate_multi_cov(rhos, var_method, func)
 
-            cov = treecorr.estimate_multi_cov([rho_0, rho_1, rho_2, rho_3, rho_4, rho_5], var_method, func)
+            use_eta_str = '' if self.use_eta else 'no_eta'
+            np.save(self.catalogs._output+'/'+'cov_rho_'+catalog_id+use_eta_str, cov)
 
-            np.save(self.catalogs._output+'/'+'cov_rho_'+catalog_id, cov)
-
-        self.save_rho_stats(filename) #A bit dirty just because of consistency of the datatype :/
+        self.save_rho_stats(filename) #A bit dirty just because of consistency of the datatype
         self.load_rho_stats(filename)
 
     def save_rho_stats(self, filename):
@@ -611,7 +681,16 @@ class RhoStat():
     def load_rho_stats(self, filename):
         self.rho_stats = fits.getdata(self.catalogs._output+'/'+filename)
 
-    def plot_rho_stats(self, filenames, colors, catalog_ids, abs=True, savefig=None, legend="each"):
+    def plot_rho_stats(
+        self,
+        filenames,
+        colors,
+        catalog_ids,
+        abs=True,
+        savefig=None,
+        legend="each",
+        title=None,
+    ):
         """
         plot_rho_stats
 
@@ -635,9 +714,13 @@ class RhoStat():
             If not None, saves the figure with the name given in savefig.
 
         legend : str, optional
-            allowed are "each" (default; legends in each panel), "outside" (legend outside of panels)
-        """
+            allowed are "each" (default; legends in each panel);
+            "outside" (legend outside of panels); "none" (no legend)
 
+        title : str, optional
+            global plot tite, default is ``None``
+        """
+        #To adapt to the new boolean argument
         fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(15,9))
         ax = ax.flatten()
 
@@ -647,11 +730,11 @@ class RhoStat():
             for i in range(6):
                 xlabel=r"$\theta$ [arcmin]" if i>2 else ''
 
-                if legend == "inside":
+                if legend == "each":
                     ylabel = r"$\rho-$statistics" if (i==0 or i==3) else ''
-                    label = fr'$\rho_{i}(\theta)$ '+cat_id
-                else:
-                    ylabel = rf"$\rho_{i}(\theta)$"
+                    label = fr'$\rho_{i}(\theta)$ {cat_id}'
+                elif legend == "outside":
+                    ylabel = rf"$\rho_i(\theta)$"
                     label = fr'$\rho_i$ {cat_id}'
 
                 if abs:
@@ -659,7 +742,6 @@ class RhoStat():
                     label=label, color=color, capsize=2)
                     ax[i].set_xlabel(xlabel)
                     ax[i].set_ylabel(ylabel)
-                    ax[i].set_xlim(float(self._treecorr_config["min_sep"]), float(self._treecorr_config["max_sep"]))
                     ax[i].set_xscale('log')
                     ax[i].set_yscale('log')
                 else:
@@ -668,12 +750,16 @@ class RhoStat():
                         ax[i], self.rho_stats['theta'], self.rho_stats['rho_'+str(i)+'_p'], yerr_in=np.sqrt(self.rho_stats['varrho_'+str(i)+'_p']),
                         vertical_lines=False, rho_nb=str(i), cat_id=cat_id, xlabel=xlabel, ylabel=ylabel, semilogx=True, semilogy=True, capsize=True, color=color,
                     )
+                ax[i].set_xlim(float(self._treecorr_config["min_sep"]), float(self._treecorr_config["max_sep"]))
 
-                if legend == "inside":
+                if legend == "each":
                     ax[i].legend(loc='best', fontsize='small')
 
         if legend == "outside":
             ax[-1].legend(bbox_to_anchor=(1.5, 0.0), fontsize='small')
+
+        if title:
+            plt.suptitle(title)
 
         plt.tight_layout()
         if savefig is not None:
@@ -688,7 +774,7 @@ class TauStat():
     Class to compute the tau statistics (Gatti 2022) of a PSF and gal catalogue.
     """
 
-    def __init__(self, params=None, output=None, treecorr_config=None, catalogs=None, verbose=False):
+    def __init__(self, params=None, output=None, use_eta=True, scalar_eta=False, treecorr_config=None, catalogs=None, verbose=False):
 
         if catalogs is None:
             self.catalogs = Catalogs(params, output)
@@ -708,6 +794,11 @@ class TauStat():
         else:
             self._treecorr_config = treecorr_config
 
+        self.use_eta = use_eta
+        self.scalar_eta = scalar_eta
+        if self.scalar_eta and not self.use_eta:
+            print("Warning: scalar_eta is set to True but use_eta is set to False. Setting use_eta to True.")
+            self.use_eta = True
         self.verbose = verbose
 
     def build_cat_to_compute_tau(self, path_cat, cat_type, catalog_id='', square_size=False, mask=False, hdu=1):
@@ -736,18 +827,21 @@ class TauStat():
         """
 
         if cat_type=="psf":
-            self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat, hdu=hdu)
+            psf_cat = self.catalogs.read_shear_cat(path_gal=None, path_psf=path_cat, hdu=hdu)
 
             if self.verbose:
                 print("Building catalogs...")
 
-            self.catalogs.build_catalog(cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf', key='psf_'+catalog_id, square_size=square_size, mask=mask)
             patch_centers = self.catalogs.catalogs_dict['psf_'+catalog_id].patch_centers
-            self.catalogs.build_catalog(cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
-            self.catalogs.build_catalog(cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_error', key='psf_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+            if self.use_eta:
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+
+            del psf_cat
 
         else:
-            self.catalogs.read_shear_cat(path_gal=path_cat, path_psf=None, hdu=hdu)
+            gal_cat = self.catalogs.read_shear_cat(path_gal=path_cat, path_psf=None, hdu=hdu)
 
             if self.verbose:
                 print("Building catalog...")
@@ -755,9 +849,11 @@ class TauStat():
             try:
                 patch_centers = self.catalogs.catalogs_dict['psf_'+catalog_id].patch_centers
             except KeyError:
-                print("Warning, you should build psf catalog before galaxy catalog.")
+                warnings.warn("You should build psf catalog before galaxy catalog.")
                 patch_centers = None
-            self.catalogs.build_catalog(cat_type='gal', key='gal_'+catalog_id, patch_centers=patch_centers)
+            self.catalogs.build_catalog(cat=gal_cat, cat_type='gal', key='gal_'+catalog_id, patch_centers=patch_centers)
+
+            del gal_cat
 
         if self.verbose:
             print("Catalogs successfully built...")
@@ -793,41 +889,71 @@ class TauStat():
         tau_0.process(self.catalogs.get_cat('gal_'+catalog_id), self.catalogs.get_cat('psf_'+catalog_id))
         tau_2 = treecorr.GGCorrelation(self._treecorr_config)
         tau_2.process(self.catalogs.get_cat('gal_'+catalog_id), self.catalogs.get_cat('psf_error_'+catalog_id))
-        tau_5 = treecorr.GGCorrelation(self._treecorr_config)
-        tau_5.process(self.catalogs.get_cat('gal_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
+        if self.use_eta:
+            tau_5 = treecorr.GGCorrelation(self._treecorr_config)
+            tau_5.process(self.catalogs.get_cat('gal_'+catalog_id), self.catalogs.get_cat('psf_size_error_'+catalog_id))
 
-        self.tau_stats = Table(
-            [
-                tau_0.meanr,
-                tau_0.xip,
-                tau_0.varxip,
-                tau_0.xim,
-                tau_0.varxim,
-                tau_2.xip,
-                tau_2.varxip,
-                tau_2.xim,
-                tau_2.varxim,
-                tau_5.xip,
-                tau_5.varxip,
-                tau_5.xim,
-                tau_5.varxim,
-            ],
-            names=(
-                'theta',
-                'tau_0_p',
-                'vartau_0_p',
-                'tau_0_m',
-                'vartau_0_m',
-                'tau_2_p',
-                'vartau_2_p',
-                'tau_2_m',
-                'vartau_2_m',
-                'tau_5_p',
-                'vartau_5_p',
-                'tau_5_m',
-                'vartau_5_m',
+        if self.use_eta:
+
+            self.tau_stats = Table(
+                [
+                    tau_0.rnom,
+                    tau_0.xip,
+                    tau_0.varxip,
+                    tau_0.xim,
+                    tau_0.varxim,
+                    tau_2.xip,
+                    tau_2.varxip,
+                    tau_2.xim,
+                    tau_2.varxim,
+                    tau_5.xip,
+                    tau_5.varxip,
+                    tau_5.xim,
+                    tau_5.varxim,
+                ],
+                names=(
+                    'theta',
+                    'tau_0_p',
+                    'vartau_0_p',
+                    'tau_0_m',
+                    'vartau_0_m',
+                    'tau_2_p',
+                    'vartau_2_p',
+                    'tau_2_m',
+                    'vartau_2_m',
+                    'tau_5_p',
+                    'vartau_5_p',
+                    'tau_5_m',
+                    'vartau_5_m',
+                )
             )
-        )
+
+        else:
+
+            self.tau_stats = Table(
+                [
+                    tau_0.rnom,
+                    tau_0.xip,
+                    tau_0.varxip,
+                    tau_0.xim,
+                    tau_0.varxim,
+                    tau_2.xip,
+                    tau_2.varxip,
+                    tau_2.xim,
+                    tau_2.varxim,
+                ],
+                names=(
+                    'theta',
+                    'tau_0_p',
+                    'vartau_0_p',
+                    'tau_0_m',
+                    'vartau_0_m',
+                    'tau_2_p',
+                    'vartau_2_p',
+                    'tau_2_m',
+                    'vartau_2_m',
+                )
+            )
 
         if self.verbose:
             print("Done...")
@@ -835,10 +961,13 @@ class TauStat():
         if save_cov:
             if self.verbose:
                 print("Computing the covariance...")
+            taus = [tau_0, tau_2]
+            if self.use_eta:
+                taus += [tau_5]
+            cov = treecorr.estimate_multi_cov(taus, var_method, func)
 
-            cov = treecorr.estimate_multi_cov([tau_0, tau_2, tau_5], var_method, func)
-
-            np.save(self.catalogs._output+'/'+'cov_tau_'+catalog_id, cov)
+            use_eta_str = '' if self.use_eta else 'no_eta'
+            np.save(self.catalogs._output+'/'+'cov_tau_'+catalog_id+use_eta_str, cov)
 
         self.save_tau_stats(filename) #A bit dirty just because of consistency of the datatype :/
         self.load_tau_stats(filename)
@@ -881,7 +1010,7 @@ class TauStat():
 
         ax : Axes
         """
-
+        #To adapt to the new boolean fields
         nrows=1 + plot_tau_m
 
         fig, ax = plt.subplots(nrows=nrows, ncols=3, figsize=(15,6))
@@ -934,7 +1063,7 @@ class PSFErrorFit():
     A Likelihood-Based Inference is used assuming a Gaussian likelihood.
     """
 
-    def __init__(self, rho_stat_handler, tau_stat_handler, data_directory):
+    def __init__(self, rho_stat_handler, tau_stat_handler, data_directory, use_eta=True):
 
         self.rho_stat_handler = rho_stat_handler
         self.tau_stat_handler = tau_stat_handler
@@ -943,8 +1072,10 @@ class PSFErrorFit():
         self.cov_tau = None
         self.init_log_prior()
 
+        self.use_eta = use_eta
+
         def log_likelihood(theta, y, inv_cov):
-            y_model = self.model(theta)
+            y_model = self.model(theta, self.use_eta)
             d = y_model -y
             return -0.5 * d.T@inv_cov@d
 
@@ -1011,8 +1142,21 @@ class PSFErrorFit():
         """
         if cov_type=='rho':
             self.cov_rho = np.load(self.data_directory+'/'+filename)
+            #Reshape the covariance if needed
+            nbins = self.rho_stat_handler.rho_stats['theta'].shape[0]
+            if not self.use_eta:
+                self.cov_rho = self.cov_rho[:3*nbins, :3*nbins]
+            #Check shape
+            target_shape = 6*nbins if self.use_eta else 3*nbins
+            assert self.cov_rho.shape[0] == target_shape, "The shape of the covariance matrix is not correct."
         else:
             self.cov_tau = np.load(self.data_directory+'/'+filename)
+            nbins = self.tau_stat_handler.tau_stats['theta'].shape[0]
+            if not self.use_eta:
+                self.cov_tau = self.cov_tau[:2*nbins, :2*nbins]
+            #Check shape
+            target_shape = 3*nbins if self.use_eta else 2*nbins
+            assert self.cov_tau.shape[0] == target_shape, "The shape of the covariance matrix is not correct."
 
     def init_log_prior(self, low_alpha=-2.0, high_alpha=2.0, low_beta=-10.0, high_beta=10.0, low_eta=-20.0, high_eta=20.0):
         """
@@ -1055,7 +1199,7 @@ class PSFErrorFit():
 
         self.log_prior = log_prior
 
-    def model(self, theta):
+    def model(self, theta, use_eta):
         """
         model
 
@@ -1075,14 +1219,21 @@ class PSFErrorFit():
         alpha, beta, eta = theta
 
         rhos = self.rho_stat_handler.rho_stats
-        tau_0_p = alpha * rhos["rho_0_p"] + beta * rhos["rho_2_p"] + eta * rhos["rho_5_p"]
-        tau_2_p = alpha * rhos["rho_2_p"] + beta * rhos["rho_1_p"] + eta * rhos["rho_4_p"]
-        tau_5_p = alpha * rhos["rho_5_p"] + beta * rhos["rho_4_p"] + eta * rhos["rho_3_p"]
+        if not use_eta:
+            tau_0_p = alpha * rhos["rho_0_p"] + beta * rhos["rho_2_p"]
+            tau_2_p = alpha * rhos["rho_2_p"] + beta * rhos["rho_1_p"]
+        else:
+            tau_0_p = alpha * rhos["rho_0_p"] + beta * rhos["rho_2_p"] + eta * rhos["rho_5_p"]
+            tau_2_p = alpha * rhos["rho_2_p"] + beta * rhos["rho_1_p"] + eta * rhos["rho_4_p"]
+            tau_5_p = alpha * rhos["rho_5_p"] + beta * rhos["rho_4_p"] + eta * rhos["rho_3_p"]
 
         model_output = np.array([
             tau_0_p,
             tau_2_p,
             tau_5_p
+        ]) if use_eta else np.array([
+            tau_0_p,
+            tau_2_p
         ])
 
         return model_output.flatten()
@@ -1163,12 +1314,23 @@ class PSFErrorFit():
 
         assert (self.cov_tau is not None), ("Please load a covariance matrix")
 
+        if not self.use_eta:
+            assert (self.cov_tau.shape[0] == 2*self.rho_stat_handler.rho_stats["theta"].shape[0]), (f"The covariance matrix does not have the right shape. Shape: {self.cov_tau.shape}")
+        else:
+            assert (self.cov_tau.shape[0] == 3*self.rho_stat_handler.rho_stats["theta"].shape[0]), (f"The covariance matrix does not have the right shape. Shape: {self.cov_tau.shape}")
+
         inv_cov = np.linalg.inv(self.cov_tau)
-        output = np.array([
-            self.tau_stat_handler.tau_stats["tau_0_p"],
-            self.tau_stat_handler.tau_stats["tau_2_p"],
-            self.tau_stat_handler.tau_stats["tau_5_p"]
-        ]).flatten()
+        if not self.use_eta:
+            output = np.array([
+                self.tau_stat_handler.tau_stats["tau_0_p"],
+                self.tau_stat_handler.tau_stats["tau_2_p"],
+                self.tau_stat_handler.tau_stats["tau_5_p"]
+            ]).flatten()
+        else:
+            output = np.array([
+                self.tau_stat_handler.tau_stats["tau_0_p"],
+                self.tau_stat_handler.tau_stats["tau_2_p"]
+            ]).flatten()
 
         if apply_debias:
             inv_cov = (npatch - output.shape[0] - 2)/(npatch-1)*inv_cov
@@ -1332,19 +1494,30 @@ class PSFErrorFit():
             Matrix of rho statistics.
         """
         n_thetas = len(self.rho_stat_handler.rho_stats["theta"]) #number of bins
-        rho_matrix = np.zeros((3*n_thetas, 3))
+        if self.use_eta:
+            rho_matrix = np.zeros((3*n_thetas, 3))
+        else:
+            rho_matrix = np.zeros((2*n_thetas, 2))
         if rho is None:
             rho_stats = self.rho_stat_handler.rho_stats
             for i in range(n_thetas):
-                rho_matrix[i] = [rho_stats["rho_0_p"][i], rho_stats["rho_2_p"][i], rho_stats["rho_5_p"][i]]
-                rho_matrix[i+n_thetas] = [rho_stats['rho_2_p'][i], rho_stats['rho_1_p'][i], rho_stats['rho_4_p'][i]]
-                rho_matrix[i+2*n_thetas] = [rho_stats['rho_5_p'][i], rho_stats['rho_4_p'][i], rho_stats['rho_3_p'][i]]
+                if self.use_eta:
+                    rho_matrix[i] = [rho_stats["rho_0_p"][i], rho_stats["rho_2_p"][i], rho_stats["rho_5_p"][i]]
+                    rho_matrix[i+n_thetas] = [rho_stats['rho_2_p'][i], rho_stats['rho_1_p'][i], rho_stats['rho_4_p'][i]]
+                    rho_matrix[i+2*n_thetas] = [rho_stats['rho_5_p'][i], rho_stats['rho_4_p'][i], rho_stats['rho_3_p'][i]]
+                else:
+                    rho_matrix[i] = [rho_stats["rho_0_p"][i], rho_stats["rho_2_p"][i]]
+                    rho_matrix[i+n_thetas] = [rho_stats['rho_2_p'][i], rho_stats['rho_1_p'][i]]
         else:
             rho_stats = rho
             for i in range(n_thetas):
-                rho_matrix[i] = [rho_stats[0, i], rho_stats[2, i], rho_stats[5, i]]
-                rho_matrix[i+n_thetas] = [rho_stats[2, i], rho_stats[1, i], rho_stats[4, i]]
-                rho_matrix[i+2*n_thetas] = [rho_stats[5, i], rho_stats[4, i], rho_stats[3, i]]
+                if self.use_eta:
+                    rho_matrix[i] = [rho_stats[0, i], rho_stats[2, i], rho_stats[5, i]]
+                    rho_matrix[i+n_thetas] = [rho_stats[2, i], rho_stats[1, i], rho_stats[4, i]]
+                    rho_matrix[i+2*n_thetas] = [rho_stats[5, i], rho_stats[4, i], rho_stats[3, i]]
+                else:
+                    rho_matrix[i] = [rho_stats[0, i], rho_stats[2, i]]
+                    rho_matrix[i+n_thetas] = [rho_stats[2, i], rho_stats[1, i]]
         return rho_matrix
     
     def build_tau_vec(self, tau=None):
@@ -1363,7 +1536,10 @@ class PSFErrorFit():
         """
         if tau is None:
             tau_stats = self.tau_stat_handler.tau_stats
-            tau_vec = np.array([tau_stats["tau_0_p"], tau_stats["tau_2_p"], tau_stats["tau_5_p"]]).flatten()
+            if self.use_eta:
+                tau_vec = np.array([tau_stats["tau_0_p"], tau_stats["tau_2_p"], tau_stats["tau_5_p"]]).flatten()
+            else:
+                tau_vec = np.array([tau_stats["tau_0_p"], tau_stats["tau_2_p"]]).flatten()
         else:
             tau_vec = tau.flatten()
         return tau_vec
@@ -1410,7 +1586,7 @@ class PSFErrorFit():
         Returns
         -------
         np.array
-            Samples obtained from the MCMC analysis
+            Samples obtained from the Least-Squares analysis
         np.array
             Best-fit values of the parameters
         np.array
@@ -1419,13 +1595,22 @@ class PSFErrorFit():
         assert self.cov_tau is not None, "Please load a covariance matrix for the tau statistics."
         assert self.cov_rho is not None, "Please load a covariance matrix for the rho statistics."
         rho_stats = self.rho_stat_handler.rho_stats
-        rho_mean = np.array([rho_stats["rho_0_p"], rho_stats["rho_1_p"], rho_stats["rho_2_p"], rho_stats["rho_3_p"],
-                             rho_stats["rho_4_p"], rho_stats["rho_5_p"]]).flatten()
+        if self.use_eta:
+            rho_mean = np.array([rho_stats["rho_0_p"], rho_stats["rho_1_p"], rho_stats["rho_2_p"], rho_stats["rho_3_p"],
+                                rho_stats["rho_4_p"], rho_stats["rho_5_p"]]).flatten()
+        else:
+            rho_mean = np.array([rho_stats["rho_0_p"], rho_stats["rho_1_p"], rho_stats["rho_2_p"]]).flatten()
         tau_stats = self.tau_stat_handler.tau_stats
-        tau_mean = np.array([tau_stats["tau_0_p"], tau_stats["tau_2_p"], tau_stats["tau_5_p"]]).flatten()
+        if self.use_eta:
+            tau_mean = np.array([tau_stats["tau_0_p"], tau_stats["tau_2_p"], tau_stats["tau_5_p"]]).flatten()
+        else:
+            tau_mean = np.array([tau_stats["tau_0_p"], tau_stats["tau_2_p"]]).flatten()
         for i in tqdm(range(n_samples)):
             rho = np.random.multivariate_normal(rho_mean, self.cov_rho)
-            rho = rho.reshape((6, -1))
+            if self.use_eta:
+                rho = rho.reshape((6, -1))
+            else:
+                rho = rho.reshape((3, -1))
             rho_matrix = self.build_rho_matrix(rho)
             tau = np.random.multivariate_normal(tau_mean, self.cov_tau)
             tau_vec = self.build_tau_vec(tau)
@@ -1439,12 +1624,15 @@ class PSFErrorFit():
         result, q = self.get_mcmc_from_samples(samples)
 
         if verbose:
-            labels = [r"$\alpha$", r"$\beta$", r"$\eta$"]
+            if self.use_eta:
+                labels = [r"$\alpha$", r"$\beta$", r"$\eta$"]
+            else:
+                labels = [r"$\alpha$", r"$\beta$"]
             print(f"Number of samples: {samples.shape[0]}\n")
 
             print("Parameters constraints")
             print("----------------------")
-            for i in range(3):
+            for i in range(2+self.use_eta):
                 print('Parameter: '+labels[i]+f'={result[1, i]:.4f}^+{q[0, i]:.4f}_{q[1, i]:.4f}')
 
             print(f"Chi square: {self.eval_chi_square(result[1,:], npatch=npatch, apply_debias=apply_debias)}")
@@ -1663,8 +1851,12 @@ class PSFErrorFit():
             xi_psf_sys
 
         """
-        alpha, beta, eta = theta
-
+        if self.use_eta:
+            alpha, beta, eta = theta
+        else:
+            alpha, beta = theta
+            eta = 0.
+        
         if term == 0:
             prefactor = alpha ** 2
         elif term == 1:
@@ -1679,8 +1871,10 @@ class PSFErrorFit():
             prefactor = 2 * beta * eta
         else:
             raise ValueError(f"Invalid term {term}")
-
-        return prefactor * self.rho_stat_handler.rho_stats[f"rho_{term}_p"]
+        if prefactor ==0:
+            return np.zeros_like(self.rho_stat_handler.rho_stats["theta"])
+        else:
+            return prefactor * self.rho_stat_handler.rho_stats[f"rho_{term}_p"]
 
     def compute_xi_psf_sys(self, theta):
         """
@@ -1698,8 +1892,6 @@ class PSFErrorFit():
         np.array
             xi_psf_sys
         """
-
-        alpha, beta, eta = theta
 
         xi_psf_sys = np.zeros_like(self.rho_stat_handler.rho_stats["theta"])
 

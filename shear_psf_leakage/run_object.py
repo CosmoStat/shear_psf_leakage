@@ -54,6 +54,7 @@ class LeakageObject:
             "output_dir": ".",
             "e1_col": "e1_uncal",
             "e2_col": "e2_uncal",
+            "w_col": "w",
             "e1_PSF_col": "e1_PSF",
             "e2_PSF_col": "e2_PSF",
             "size_PSF_col": "fwhm_PSF",
@@ -78,6 +79,7 @@ class LeakageObject:
             "output_dir": "output_dir, default={}",
             "e1_col": "e1 column name in galaxy catalogue, default={}",
             "e2_col": "e2 column name in galaxy catalogue, default={}",
+            "w_col": "weight column name in galaxy catalogue, default={}",
             "e1_PSF_col": "PSF e1 column name in galaxy catalogue, default={}",
             "e2_PSF_col": "PSF e2 column name in galaxy catalogue, default={}",
             "size_PSF_col": "PSF size column name, default={}",
@@ -373,7 +375,7 @@ class LeakageObject:
         e1 = self._dat[self._params["e1_col"]]
         e2 = self._dat[self._params["e2_col"]]
         e = np.array([e1, e2])
-        weights = self._dat["w"]
+        weights = self._dat[self._params["w_col"]]
 
         return e, weights
 
