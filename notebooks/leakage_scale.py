@@ -6,55 +6,34 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.14.5
+#       jupytext_version: 1.15.2
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: shear_psf_leakage
 #     language: python
-#     name: python3
+#     name: shear_psf_leakage
 # ---
 
-# # PSF leakage
-# SP validation
+# # Scale-dependent PSF leakage
+#
+# ## Scalar $\alpha(\theta)$ and $\xi_\textrm{sys}$
+#
+# package shear_psf_leakge
+#
+# Martin Kilbinger <martin.kilbinger@cea.fr>
+
+# %reload_ext autoreload
+# %autoreload 2
 
 # +
 import os
+import sys
 import matplotlib.pylab as plt
+from astropy import units
+
+from cs_util import plots as cs_plots
 
 import shear_psf_leakage.run_scale as run
 from shear_psf_leakage.leakage import *
-
-# -
-
-# ## Set input parameters
-
-params_in = {}
-
-# ### Input catalogues
-
-# +
-# Data directory
-data_dir = f"{os.environ['HOME']}/astro/data/CFIS/v1.0/ShapePipe"
-params_in["data_dir"] = data_dir
-
-# Input galaxy shear catalogue
-params_in["input_path_shear"] = f"{data_dir}/unions_shapepipe_extended_2022_v1.0.fits"
-
-# Input star/PSF catalogue
-params_in["input_path_PSF"] = f"{data_dir}/unions_shapepipe_star_2022_v1.0.3.fits"
-
-# Input galaxy redshift distribution (for theoretical model of xi_pm)
-params_in["dndz_path"] = f"{data_dir}/../nz/dndz_SP_A.txt"
-# -
-
-# ### Other parameters
-
-# +
-# PSF ellipticty column names
-params_in["e1_PSF_star_col"] = "e1"
-params_in["e2_PSF_star_col"] = "e2"
-
-# Set verbose output
-params_in["verbose"] = True
 # -
 
 # ## Compute leakage
@@ -62,14 +41,36 @@ params_in["verbose"] = True
 # Create leakage instance
 obj = run.LeakageScale()
 
-# Set instance parameters, copy from above
-for key in params_in:
-    obj._params[key] = params_in[key]
 
+# ### Set input parameters
+
+params_in_path = "params_leakage_scale.py"
+if os.path.exists(params_in_path):
+    print(f"Reading configuration script {params_in_path}")
+
+    with open(params_in_path) as f:
+        exec(f.read())
+
+    # Set instance parameters, copy from above
+    for key in params_in:
+        obj._params[key] = params_in[key]
+else:
+    print(f"Configuration script {params_in_path} not found, asking for user input")
+
+    for key in obj._params:
+        msg = f"{key}? [{obj._params[key]}] "
+        val_user = input(msg)
+        if val_user != "":
+            obj._params[key] = val_user
+
+print(obj._params)
+
+# + [markdown] jp-MarkdownHeadingCollapsed=true
 # ### Run
 # There are two options to run the leakage compuations:
 # 1. Run all at once with single class routine.
 # 2. Execute individual steps.
+# -
 
 # ### Option 1. Run all at once
 
@@ -79,72 +80,71 @@ for key in params_in:
 
 # ### Option 2. Execute individual steps
 
-# +
 # Check parameter validity
 obj.check_params()
 
-# Get all parameters defined in instance
-params = obj._params
-# -
+# Prepare output directory and stats file
+obj.prepare_output()
 
-# Prepare output
-if not os.path.exists(params["output_dir"]):
-    os.mkdir(params["output_dir"])
-obj._stats_file = open_stats_file(params["output_dir"], "stats_file_leakage.txt")
-
-# #### Prepare input
-
-# Read input shear
-dat_shear = obj.read_shear_cat()
-
-# Apply cuts to galaxy catalogue if required
-dat_shear = cut_data(dat_shear, params["cut"], params["verbose"])
-
-# Read star catalogue
-dat_PSF = open_fits_or_npy(
-    params["input_path_PSF"],
-    hdu_no=params["hdu_psf"],
-)
-
-# Deal with close objects in PSF catalogue (= stars on same position
-# from different exposures)
-dat_PSF = obj.handle_close_objects(dat_PSF)
-
-# Copy variables to instance
-obj.dat_shear = dat_shear
-obj.dat_PSF = dat_PSF
+# Prepare input
+obj.read_data()
 
 # #### Compute correlation functions
 # The following command calls `treecorr` to compute auto- and cross-correlation functions.
 # This can take a few minutes.
 
+# Compute various correlation functions.
 obj.compute_corr_gp_pp_alpha()
 
 # #### Scale-dependent alpha function
 
-# Average over scales
-obj.compute_alpha_mean()
+# Compute correct leakage
+obj.do_alpha()
 
+# +
 # Plot
-obj.plot_alpha_leakage()
+
+xlim = [obj._params["theta_min_amin"], obj._params["theta_max_amin"]]
+ylim = obj._params["leakage_alpha_ylim"]
+
+theta = [obj.r_corr_gp.meanr]
+alpha_theta = [obj.alpha_leak]
+yerr = [obj.sig_alpha_leak]
+labels = [r"$\alpha$"]
+xlabel = r"$\theta$ [arcmin]"
+ylabel = r"$\alpha(\theta)$"
+title = ""
+out_path = f"{obj._params['output_dir']}/alpha_leakage.png"
+
+cs_plots.plot_data_1d(
+    theta,
+    alpha_theta,
+    yerr,
+    title,
+    xlabel,
+    ylabel,
+    out_path,
+    labels=labels,
+    xlog=True,
+    xlim=xlim,
+    ylim=ylim,
+    close_fig=False,
+)
+# -
 
 # #### xi_sys cross-correlation function
 
 # Compute
-obj.compute_xi_sys()
+obj.do_xi_sys()
 
 # Plot
-obj.plot_xi_sys()
-
-params[
-    "dndz_path"
-] = "/home/mkilbing/astro/data/CFIS/v1.0/ShapePipe/../nz/dndz_SP_A.txt"
+obj.plot_xi_sys(close_fig=False)
 
 # Theoretical model for xi_pm
-xi_p_theo, xi_m_theo = run.get_theo_xi_planck(
-    obj.r_corr_gp.meanr,
-    params["dndz_path"],
+xi_p_theo, xi_m_theo = run.get_theo_xi(
+    obj.r_corr_gp.meanr * units.arcmin,
+    obj._params["dndz_path"],
 )
 
-# obj Plot ratio
-obj.plot_xi_sys_ratio(xi_p_theo, xi_m_theo)
+# Plot ratio
+obj.plot_xi_sys_ratio(xi_p_theo, xi_m_theo, close_fig=False)
