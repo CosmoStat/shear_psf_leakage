@@ -234,8 +234,8 @@ complex_gal = (
     + np.average(e2_gal, weights=weights_gal) * 1j
 )
 
-e1_psf = obj_scale.dat_PSF["E1_PSF_HSM"]
-e2_psf = obj_scale.dat_PSF["E2_PSF_HSM"]
+e1_psf = obj_scale.dat_PSF["HSM_G1_PSF"]
+e2_psf = obj_scale.dat_PSF["HSM_G2_PSF"]
 complex_psf = np.mean(e1_psf) + np.mean(e2_psf) * 1j
 
 # +

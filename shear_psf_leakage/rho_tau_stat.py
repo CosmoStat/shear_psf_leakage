@@ -214,12 +214,12 @@ class Catalogs:
             "dec_col": "Dec",
             "ra_PSF_col": "RA",
             "dec_PSF_col": "Dec",
-            "e1_PSF_col": "E1_PSF_HSM",
-            "e2_PSF_col": "E2_PSF_HSM",
-            "e1_star_col": "E1_STAR_HSM",
-            "e2_star_col": "E2_STAR_HSM",
-            "PSF_size": "SIGMA_PSF_HSM",
-            "star_size": "SIGMA_STAR_HSM",
+            "e1_PSF_col": "HSM_G1_PSF",
+            "e2_PSF_col": "HSM_G2_PSF",
+            "e1_star_col": "HSM_G1_STAR",
+            "e2_star_col": "HSM_G2_STAR",
+            "PSF_size": "HSM_T_PSF",
+            "star_size": "HSM_T_STAR",
             "M_4_1_psf_col": "M_4_PSF_1",
             "M_4_2_psf_col": "M_4_PSF_2",
             "M_4_1_star_col": "M_4_STAR_1",
@@ -228,8 +228,8 @@ class Catalogs:
             "M_4_2_psf_col": "M_4_PSF_2",
             "M_4_1_star_col": "M_4_STAR_1",
             "M_4_2_star_col": "M_4_STAR_2",
-            "PSF_flag": "FLAG_PSF_HSM",
-            "star_flag": "FLAG_STAR_HSM",
+            "PSF_flag": "HSM_FLAG_PSF",
+            "star_flag": "HSM_FLAG_STAR",
             "patch_number": 120,
             "ra_units": "deg",
             "dec_units": "deg",
@@ -272,7 +272,7 @@ class Catalogs:
             dat_psf = fits.getdata(path_psf, ext=hdu)
             return dat_psf
 
-    def get_cat_fields(self, cat, cat_type, square_size=False):
+    def get_cat_fields(self, cat, cat_type):
         """
         Get Cat Fields
 
@@ -284,9 +284,6 @@ class Catalogs:
             catalogue of galaxies or stars. Type should match the cat_type given in argument.
         cat_type : str
             catalogue type, allowed are 'gal', 'psf', 'psf_error' or 'psf_size_error'
-
-        square_size : bool
-            If True, the size computed in the catalogue is squared (Default: False)
 
         Returns
         -------
@@ -334,7 +331,7 @@ class Catalogs:
                 g2 /= self._params["R22"]
         else:
             #Add a mask?
-            #mask = (self.dat_psf[self._params["FLAG_PSF_HSM"]]==0) & (self.dat_psf[self._params["FLAG_STAR_HSM"]]==0)
+            #mask = (self.dat_psf[self._params["HSM_FLAG_PSF"]]==0) & (self.dat_psf[self._params["HSM_FLAG_STAR"]]==0)
             if self._params["ra_PSF_col"] is not None: #Check if a name for the columns of the PSF coordinates is given
                 ra = cat[self._params["ra_PSF_col"]]
                 dec = cat[self._params["dec_PSF_col"]]
@@ -364,8 +361,8 @@ class Catalogs:
                 # g2 -= g2.mean()
 
             elif cat_type=="psf_size_error":
-                size_star = cat[self._params["star_size"]]**2 if square_size else  cat[self._params["star_size"]]
-                size_psf = cat[self._params["PSF_size"]]**2 if square_size else  cat[self._params["PSF_size"]]
+                size_star = cat[self._params["star_size"]]
+                size_psf = cat[self._params["PSF_size"]]
 
                 g1 = cat[self._params["e1_star_col"]] * (size_star - size_psf) / size_star
                 #g1 -= g1.mean()
@@ -389,7 +386,6 @@ class Catalogs:
         key,
         npatch=None,
         patch_centers=None,
-        square_size=False,
         mask=None,
     ):
         """
@@ -409,9 +405,6 @@ class Catalogs:
         npatch : int
             number of patch used to compute variance with jackknife or bootstrap. (Default: value in self._params)
 
-        square_size : bool
-            If True, the size computed in the catalogue is squared (Default: False)
-
         mask : np.array
             A mask array to select only the relevant objects in the catalogue. If None, no mask is applied. (Default: None)
         """
@@ -420,7 +413,7 @@ class Catalogs:
             npatch = self._params["patch_number"]
 
         ra, dec, g1, g2, weights = self.get_cat_fields(
-            cat, cat_type, square_size
+            cat, cat_type
         )
 
         if mask is None:
@@ -552,7 +545,7 @@ class RhoStat:
         self.verbose = verbose
 
     def build_cat_to_compute_rho(
-        self, path_cat_star, catalog_id="", square_size=False, mask=None, hdu=1
+        self, path_cat_star, catalog_id="", mask=None, hdu=1
     ):
         """
         build_cat_to_compute_rho
@@ -564,9 +557,6 @@ class RhoStat:
 
         catalog_id : str
             An id to identify the catalog used in the keys of the stored treecorr.Catalog.
-
-        square_size : bool
-            If True, the size computed in the catalogue is squared (Default: False)
 
         mask : np.array
             A mask array to select only the relevant objects in the catalogue. If None, no mask is applied. (Default: None)
@@ -586,7 +576,6 @@ class RhoStat:
             cat=psf_cat,
             cat_type="psf",
             key="psf_" + catalog_id,
-            square_size=square_size,
             mask=mask,
         )
         patch_centers = self.catalogs.catalogs_dict[
@@ -597,7 +586,6 @@ class RhoStat:
             cat_type="psf_error",
             key="psf_error_" + catalog_id,
             patch_centers=patch_centers,
-            square_size=square_size,
             mask=mask,
         )
         if self.use_eta:
@@ -606,17 +594,16 @@ class RhoStat:
                 cat_type="psf_size_error",
                 key="psf_size_error_" + catalog_id,
                 patch_centers=patch_centers,
-                square_size=square_size,
-                mask=mask,
+            mask=mask,
             )
 
         if self.use_fourth_moment:
-            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
-            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, mask=mask)
 
         if self.use_fourth_moment:
-            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
-            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, mask=mask)
+            self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, mask=mask)
 
         del psf_cat
 
@@ -1360,7 +1347,6 @@ class TauStat:
         path_cat,
         cat_type,
         catalog_id="",
-        square_size=False,
         mask=None,
         hdu=1,
     ):
@@ -1377,9 +1363,6 @@ class TauStat:
 
         catalog_id : str
             An id to identify the catalog used in the keys of the stored treecorr.Catalog.
-
-        square_size : bool
-            If True, the size computed in the catalogue is squared (Default: False)
 
         mask : np.array
             A mask array to select only the relevant stars in the catalogue. If None, no mask is applied. (Default: None)
@@ -1400,8 +1383,7 @@ class TauStat:
                 cat=psf_cat,
                 cat_type="psf",
                 key="psf_" + catalog_id,
-                square_size=square_size,
-                mask=mask,
+            mask=mask,
             )
             patch_centers = self.catalogs.catalogs_dict[
                 "psf_" + catalog_id
@@ -1411,18 +1393,17 @@ class TauStat:
                 cat_type="psf_error",
                 key="psf_error_" + catalog_id,
                 patch_centers=patch_centers,
-                square_size=square_size,
-                mask=mask,
+            mask=mask,
             )
             if self.use_eta:
-                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, mask=mask)
             if self.use_fourth_moment:
-                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
-                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
-                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, mask=mask)
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, mask=mask)
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_size_error', key='psf_size_error_'+catalog_id, patch_centers=patch_centers, mask=mask)
             if self.use_fourth_moment:
-                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
-                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, square_size=square_size, mask=mask)
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment', key='psf_fourth_moment_'+catalog_id, patch_centers=patch_centers, mask=mask)
+                self.catalogs.build_catalog(cat=psf_cat, cat_type='psf_fourth_moment_error', key='psf_fourth_moment_error_'+catalog_id, patch_centers=patch_centers, mask=mask)
 
             del psf_cat
 
@@ -1447,7 +1428,7 @@ class TauStat:
                 cat=gal_cat,
                 cat_type="gal",
                 key="gal_" + catalog_id,
-                mask=mask,
+            mask=mask,
                 patch_centers=patch_centers,
             )
 

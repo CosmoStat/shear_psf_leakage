@@ -165,17 +165,16 @@ class CovTauTh:
             "dec_col": "Dec",
             "ra_PSF_col": "RA",
             "dec_PSF_col": "Dec",
-            "e1_PSF_col": "E1_PSF_HSM",
-            "e2_PSF_col": "E2_PSF_HSM",
-            "e1_star_col": "E1_STAR_HSM",
-            "e2_star_col": "E2_STAR_HSM",
-            "PSF_size": "SIGMA_PSF_HSM",
-            "star_size": "SIGMA_STAR_HSM",
-            "PSF_flag": "FLAG_PSF_HSM",
-            "star_flag": "FLAG_STAR_HSM",
+            "e1_PSF_col": "HSM_G1_PSF",
+            "e2_PSF_col": "HSM_G2_PSF",
+            "e1_star_col": "HSM_G1_STAR",
+            "e2_star_col": "HSM_G2_STAR",
+            "PSF_size": "HSM_T_PSF",
+            "star_size": "HSM_T_STAR",
+            "PSF_flag": "HSM_FLAG_PSF",
+            "star_flag": "HSM_FLAG_STAR",
             "R11": np.array([1]),
             "R22": np.array([1]),
-            "square_size": True,
             "ra_units": "deg",
             "dec_units": "deg"
         }
@@ -283,9 +282,9 @@ class CovTauTh:
         )
 
         if self.use_eta:
-            size_resid = (cat_psf[self._params['star_size']]**2-cat_psf[self._params['PSF_size']]**2)/cat_psf[self._params['star_size']]**2\
-            if self._params['square_size'] else\
-            (cat_psf[self._params['star_size']]-cat_psf[self._params['PSF_size']])/cat_psf[self._params['star_size']]
+            size_resid = (
+                cat_psf[self._params['star_size']] - cat_psf[self._params['PSF_size']]
+            ) / cat_psf[self._params['star_size']]
 
             size_error = treecorr.Catalog(
                 ra=cat_psf[self._params['ra_PSF_col']], dec=cat_psf[self._params['dec_PSF_col']],
