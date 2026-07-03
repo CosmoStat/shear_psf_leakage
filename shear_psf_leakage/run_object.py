@@ -11,6 +11,7 @@ from lmfit import Parameters
 from matplotlib import pyplot as plt
 
 from . import leakage, plots
+from .plot_style import set_style
 
 
 class LeakageObject:
@@ -673,6 +674,10 @@ def run_leakage_object(*args):
     Run object-wise PSF leakage as python script from command line.
 
     """
+    # Apply the shear_psf_leakage plot style for command-line runs (opt-in;
+    # importing this module no longer sets it globally).
+    set_style()
+
     # Create object for object-wise leakage calculations
     obj = LeakageObject()
 

@@ -23,6 +23,7 @@ from uncertainties import unumpy
 
 from . import correlation as corr
 from . import leakage
+from .plot_style import set_style
 
 
 def get_theo_xi(theta, dndz_path):
@@ -1290,6 +1291,10 @@ def run_leakage_scale(*args):
     Run scale-dependent PSF leakage as python script from command line.
 
     """
+    # Apply the shear_psf_leakage plot style for command-line runs (opt-in;
+    # importing this module no longer sets it globally).
+    set_style()
+
     # Create object for scale-dependent leakage calculations
     obj = LeakageScale()
 

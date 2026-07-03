@@ -22,8 +22,6 @@ from cs_util import args as cs_args
 from lmfit import Parameters, minimize
 from uncertainties import ufloat
 
-from .plot_style import *
-
 
 # MKDEBUG TODO: to cs_util (and see sp_validation/io.py)
 def open_stats_file(directory, file_name):
