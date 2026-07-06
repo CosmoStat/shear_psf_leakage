@@ -321,33 +321,44 @@ for ndx in range(len(theta)):
 
 # TODO: Use centered functions for all cases
 
+show_spin = False
+
 y = [
     obj_scale.alpha_leak,
     unumpy.nominal_values(alpha_1),
     unumpy.nominal_values(alpha_2),
-    unumpy.nominal_values(obj_scale._alpha_0_r),
 ]
+
 dy = [
     obj_scale.sig_alpha_leak,
     unumpy.std_devs(alpha_1),
     unumpy.std_devs(alpha_2),
-    unumpy.std_devs(obj_scale._alpha_0_r),
 ]
+
 theta_arr = [theta] * len(y)
 
 labels = [
     r"$\alpha^{\rm s}_+$",
     r"$\alpha^{\rm s}_1$",
     r"$\alpha^{\rm s}_2$",
-    r"$\alpha^\Re_0$",
 ]
+
+
 xlabel = r"$\theta$ [arcmin]"
 ylabel = r"$\alpha(\theta)$"
 title = ""
 out_path = f"{obj_scale._params['output_dir']}/alpha_leakage_scalar_consistency.png"
-colors = ["cyan", "black", "grey", "blue"]
-markers = ["x", "h", "o", "o"]
-linestyles = ["--", "--", "--", "-"]
+colors = ["cyan", "black", "grey"]
+markers = ["x", "h", "o"]
+linestyles = ["--", "--", "--"]
+
+if show_spin:
+    y.append(unumpy.nominal_values(obj_scale._alpha_0_r))
+    dy.append(unumpy.std_devs(obj_scale._alpha_0_r))
+    labels.append(r"$\alpha^\Re_0$")
+    colors.append("blue")
+    markers.append("o")
+    linestyles.append("-")
 
 cs_plots.plot_data_1d(
     theta_arr,

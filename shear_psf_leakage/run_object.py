@@ -66,6 +66,7 @@ class LeakageObject:
             "cols": None,
             "cols_ratio": None,
             "test": False,
+            "no_stats_file": False,
         }
         self._short_options = {
             "input_path_shear": "-i",
@@ -74,10 +75,11 @@ class LeakageObject:
         }
         self._types = {
             "test": "bool",
+            "no_stats_file": "bool",
         }
         self._help_strings = {
             "input_path_shear": "input path of the extended shear catalogue",
-            "output_dir": "output_dir, default={}",
+            "output_dir": "output_dir, set to \"\" for no output; default={}",
             "e1_col": "e1 column name in galaxy catalogue, default={}",
             "e2_col": "e2 column name in galaxy catalogue, default={}",
             "w_col": "weight column name in galaxy catalogue, default={}",
@@ -91,6 +93,7 @@ class LeakageObject:
             "cols": "White-space separated list of column names for fit",
             "cols_ratio": "fit as function of ratio of two columns",
             "test": "Fit toy model and exit",
+            "no_stats_file": "Do not create a to stats file",
         }
 
     def check_params(self):
@@ -165,14 +168,18 @@ class LeakageObject:
 
         """
         # Creation of the output directory
-        if not os.path.exists(self._params["output_dir"]):
-            os.mkdir(self._params["output_dir"])
+        if self._params["output_dir"] != "":
+            if not os.path.exists(self._params["output_dir"]):
+                os.mkdir(self._params["output_dir"])
 
         # Creation of the statistics file handler
-        self._stats_file = leakage.open_stats_file(
-            self._params["output_dir"],
-            "stats_file_leakage.txt",
-        )
+        if self._params["no_stats_file"] or self._params["output_dir"] == "":
+            self._stats_file = None
+        else:
+            self._stats_file = leakage.open_stats_file(
+                self._params["output_dir"],
+                "stats_file_leakage.txt",
+            )
 
     def read_data(self):
         """Read Data.
@@ -240,11 +247,14 @@ class LeakageObject:
 
         if self._params["verbose"]:
             print("Quadratic fit")
-        out_path_arr = [
-            f"{self._params['output_dir']}/{name}_quad" for name in out_name_arr
-        ]
-        name = "systematics_test_quad"
-        out_path_arr.append(f"{self._params['output_dir']}/{name}")
+        if self._params["output_dir"] != "":
+            out_path_arr = [
+                f"{self._params['output_dir']}/{name}_quad" for name in out_name_arr
+            ]
+            name = "systematics_test_quad"
+            out_path_arr.append(f"{self._params['output_dir']}/{name}")
+        else:
+            out_path_arr = None
         qlabel = ["q_1", "q_2"]
         leakage.quad_corr_n_quant(
             x_arr,
@@ -261,13 +271,19 @@ class LeakageObject:
             colors=colors,
             stats_file=self._stats_file,
             verbose=self._params["verbose"],
+            do_plots=do_plots,
         )
 
         if self._params["verbose"]:
             print("Linear fit")
-        out_path_arr = [
-            f"{self._params['output_dir']}/{name}_lin" for name in out_name_arr
-        ]
+        out_path_arr = (
+            [
+                f"{self._params['output_dir']}/{name}_lin"
+                for name in out_name_arr
+            ]
+            if self._params["output_dir"] != ""
+            else None
+        )
         m_arr, m_err_arr, tick_name_arr = leakage.affine_corr_n(
             x_arr,
             e,
@@ -355,8 +371,9 @@ class LeakageObject:
         plt.title(title, fontsize=10)
         plt.tight_layout()
 
-        out_path = f"{self._params['output_dir']}/systematics_test_lin_{mode}"
-        plt.savefig(out_path)
+        if self._params["output_dir"] != "":
+            out_path = f"{self._params['output_dir']}/systematics_test_lin_{mode}"
+            plt.savefig(out_path)
         plt.close()
 
     def test(self):
@@ -431,7 +448,11 @@ class LeakageObject:
                 )
 
                 # Create plots
-                out_base = f"{self._params['output_dir']}/test_{order}_{mix}"
+                out_base = (
+                    f"{self._params['output_dir']}/test_{order}_{mix}"
+                    if self._params["output_dir"] != ""
+                    else None
+                )
                 plots.plots_all_corr_2d(
                     self.par_best_fit,
                     x_arr[:2],
@@ -473,12 +494,15 @@ class LeakageObject:
         Return output file base name.
 
         """
-        return (
-            f"{self._params['output_dir']}"
-            + f"/PSF_e_vs_e_gal_order-{order}_mix-{mix}"
-        )
+        if self._params["output_dir"] == "":
+            return None
+        else:
+            return (
+                f"{self._params['output_dir']}"
+                + f"/PSF_e_vs_e_gal_order-{order}_mix-{mix}"
+            )
 
-    def PSF_leakage(self, mix=True, order="lin"):
+    def PSF_leakage(self, mix=True, order="lin", params=None, do_plots=True):
         """PSF Leakage.
 
         Compute and plot object-by-object PSF spin-consistent leakage relations.
@@ -489,6 +513,11 @@ class LeakageObject:
             Component mixing (spin-consistent); default is ``True``
         order : str, optional
             regression order; allowed are "lin" (default) and "quad"
+        params : lmfit.Parameters, optional
+            pre-initialized Parameters object with parameters to be fitted;
+            default is ``None`` (initialized in function)
+        do_plots : bool, optional
+            create plots if ``True`` (default)
 
         """
         # Set options for plotting
@@ -518,7 +547,7 @@ class LeakageObject:
         # Fit consistent spin-2 2D model
         out_base = self.get_out_base(mix, order)
         out_path = f"{out_base}.pkl"
-        if not os.path.exists(out_path):
+        if not os.path.exists(out_path) or out_path == "None.pkl":
             if self._params["verbose"]:
                 print("Computing best-fit parameters")
             self.par_best_fit = leakage.corr_2d(
@@ -527,31 +556,34 @@ class LeakageObject:
                 weights=weights,
                 order=order,
                 mix=mix,
+                params=params,
                 stats_file=self._stats_file,
                 verbose=self._params["verbose"],
             )
-            leakage.save_to_file(self.par_best_fit, out_path)
+            if self._params["output_dir"] != "":
+                leakage.save_to_file(self.par_best_fit, out_path)
         else:
             if self._params["verbose"]:
                 print(f"Reading best-fit parameters from file {out_path}")
             self.par_best_fit = leakage.read_from_file(out_path)
 
-        plots.plots_all_corr_2d(
-            self.par_best_fit,
-            x_arr[:2],
-            e,
-            weights=weights,
-            xlabel_arr=xlabel_arr[:2],
-            ylabel_arr=ylabel_arr,
-            title="",
-            n_bin=n_bin,
-            order=order,
-            mix=mix,
-            out_base=out_base,
-            colors=colors,
-            stats_file=self._stats_file,
-            verbose=self._params["verbose"],
-        )
+        if do_plots:
+            plots.plots_all_corr_2d(
+                self.par_best_fit,
+                x_arr[:2],
+                e,
+                weights=weights,
+                xlabel_arr=xlabel_arr[:2],
+                ylabel_arr=ylabel_arr,
+                title="",
+                n_bin=n_bin,
+                order=order,
+                mix=mix,
+                out_base=out_base,
+                colors=colors,
+                stats_file=self._stats_file,
+                verbose=self._params["verbose"],
+            )
 
         # Fit separate 1D models
         # MKDEBUG TODO: put in separate class function
@@ -560,11 +592,14 @@ class LeakageObject:
         mlabel = [r"\alpha_1", r"\alpha_2"]
         clabel = ["c_1", "c_2"]
 
-        out_path_arr = [
-            f"{self._params['output_dir']}/{name}" for name in out_name_arr
-        ]
-        name = "systematics_test"
-        out_path_arr.append(f"{self._params['output_dir']}/{name}")
+        if self._params["output_dir"] != "":
+            out_path_arr = [
+                f"{self._params['output_dir']}/{name}" for name in out_name_arr  
+            ]
+            name = "systematics_test"
+            out_path_arr.append(f"{self._params['output_dir']}/{name}")
+        else:
+            out_path_arr = None
         leakage.affine_corr_n(
             x_arr,
             e,
@@ -579,6 +614,7 @@ class LeakageObject:
             colors=colors,
             stats_file=self._stats_file,
             verbose=self._params["verbose"],
+            do_plots=do_plots,
         )
 
     def obs_leakage(self):

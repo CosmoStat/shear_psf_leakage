@@ -399,6 +399,7 @@ def quad_corr_quant(
     verbose=False,
     seed=None,
     rng=None,
+    do_plots=True,
 ):
     """Quadratic Correlation Quantity.
 
@@ -434,6 +435,8 @@ def quad_corr_quant(
         Seed to initialize the randoms. [Default: None]
     rng: numpy.random.RandomState
         Random generator. [Default: None]
+    do_plots : bool, optional
+            create plots if ``True`` (default)
 
     Returns
     -------
@@ -530,61 +533,70 @@ def quad_corr_quant(
         params.add("m", value=0.01)
         params.add("c", value=0.01)
 
-        # Optimize parameters
-        res = minimize(
-            loss_bias_quad_1d, params, args=(x, y[jdx], 1 / np.sqrt(weights))
-        )
-
-        qslope.append(res.params["q"].value)
-        slope.append(res.params["m"].value)
-
         ticks_names.append(f"{xlabel}_e_{jdx+1}")
-        q_dm = ufloat(res.params["q"].value, res.params["q"].stderr)
-        m_dm = ufloat(res.params["m"].value, res.params["m"].stderr)
-        c_dc = ufloat(res.params["c"].value, res.params["c"].stderr)
 
-        q_err.append(res.params["q"].stderr)
-        m_err.append(res.params["m"].stderr)
+        try:
+            # Optimize parameters
+            res = minimize(
+                loss_bias_quad_1d, params, args=(x, y[jdx], 1 / np.sqrt(weights))
+            )
 
-        label = (
-            rf"${qlabel[jdx]}={q_dm: .2ugL}, {mlabel[jdx]}={m_dm: .2ugL},"
-            + f" {clabel[jdx]}={c_dc: .2ugL}$"
-        )
+            qslope.append(res.params["q"].value)
+            slope.append(res.params["m"].value)
+            q_err.append(res.params["q"].stderr)
+            m_err.append(res.params["m"].stderr)
 
-        plt.plot(
-            x_bin,
-            func_bias_quad_1D(res.params, x_bin),
-            c=colors[jdx],
-            label=label,
-        )
+            if do_plots:
+                q_dm = ufloat(res.params["q"].value, res.params["q"].stderr)
+                m_dm = ufloat(res.params["m"].value, res.params["m"].stderr)
+                c_dc = ufloat(res.params["c"].value, res.params["c"].stderr)
 
-        plt.errorbar(
-            x_bin,
-            y_bin[jdx],
-            yerr=err_bin[jdx],
-            c=colors[jdx],
-            fmt=".",
-        )
+                label = (
+                    rf"${qlabel[jdx]}={q_dm: .2ugL}, {mlabel[jdx]}={m_dm: .2ugL},"
+                    + f" {clabel[jdx]}={c_dc: .2ugL}$"
+                )
+                plt.plot(
+                    x_bin,
+                    func_bias_quad_1D(res.params, x_bin),
+                    c=colors[jdx],
+                    label=label,
+                )
+                plt.errorbar(
+                    x_bin,
+                    y_bin[jdx],
+                    yerr=err_bin[jdx],
+                    c=colors[jdx],
+                    fmt=".",
+                )
 
-        if stats_file:
-            msg1 = "{}: {}={:.2ugP}".format(xlabel, qlabel[jdx], q_dm)
-            msg2 = "{}: {}={:.2ugP}".format(xlabel, mlabel[jdx], m_dm)
-            print_stats(msg1, stats_file, verbose=verbose)
-            print_stats(msg2, stats_file, verbose=verbose)
+            if stats_file:
+                msg1 = "{}: {}={:.2ugP}".format(xlabel, qlabel[jdx], q_dm)
+                msg2 = "{}: {}={:.2ugP}".format(xlabel, mlabel[jdx], m_dm)
+                print_stats(msg1, stats_file, verbose=verbose)
+                print_stats(msg2, stats_file, verbose=verbose)
 
-    # Finalise plots
-    plt_xmin, plt_xmax = plt.xlim()
-    plt.xlim(plt_xmin, plt_xmax)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.legend()
+        except Exception as e:
+            if verbose:
+                print("Minimizing failed, str(e)")
 
-    plt.title(title)
-    plt.tight_layout()
+            qslope.append(-1.0)
+            slope.append(-1.0)
+            q_err.append(1.0)
+            m_err.append(1.0)
+    
+    if do_plots:
+        # Finalise plots
+        plt_xmin, plt_xmax = plt.xlim()
+        plt.xlim(plt_xmin, plt_xmax)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.legend()
+        plt.title(title)
+        plt.tight_layout()
 
-    if out_path:
-        plt.savefig(out_path, bbox_inches="tight")
-    plt.close()
+        if out_path:
+            plt.savefig(out_path, bbox_inches="tight")
+        plt.close()
 
     return slope, qslope, ticks_names, m_err, q_err
 
@@ -605,6 +617,7 @@ def quad_corr_n_quant(
     stats_file=None,
     verbose=False,
     seed=None,
+    do_plots=True,
 ):
     """Quadratic Correlation N Quantity.
 
@@ -638,6 +651,8 @@ def quad_corr_n_quant(
         verbose output if True
     seed: int
         Seed to initialize the randoms. [Default: None]
+    do_plots : bool, optional
+            create plots if ``True`` (default)
 
     """
     master_rng = np.random.RandomState(seed)
@@ -668,6 +683,7 @@ def quad_corr_n_quant(
             stats_file=stats_file,
             verbose=verbose,
             seed=seed_tmp,
+            do_plots=do_plots,
         )
 
         for i in range(len(slope)):
@@ -856,12 +872,44 @@ def print_fit_report(res, file=None):
     print(f"bic = {res.bic}", file=file)
 
 
+def init_parameters(order="lin", mix=True):
+    """Init Parameters for minimization best-fit.
+    
+    """
+    # Initialise parameters of model to fit
+    params = Parameters()
+
+    val_init = 0.0
+
+    # Affine parameters
+    for p_affine in ["a11", "a22", "c1", "c2"]:
+        params.add(p_affine, value=val_init)
+
+    if mix:
+        # Linear mixing pararmeters
+        params.add("a12", value=val_init)
+        params.add("a21", value=val_init)
+
+    if order == "quad":
+        # Quadratic parameters
+        for p_quad in ["q111", "q222"]:
+            params.add(p_quad, value=val_init)
+
+        if mix:
+            # Quadratic mixing parameters
+            for p_quad_mix in ["q112", "q122", "q212", "q211"]:
+                params.add(p_quad_mix, value=val_init)
+
+    return params
+
+
 def corr_2d(
     x,
     y,
     weights=None,
     order="lin",
     mix=False,
+    params=None,
     stats_file=None,
     verbose=False,
 ):
@@ -898,45 +946,31 @@ def corr_2d(
     if any(len(y[0]) != c for c in {len(y[1]), len(x[0]), len(x[1])}):
         raise IndexError("Input data has inconsistent length")
 
-    # Initialise parameters of model to fit
-    params = Parameters()
-
-    val_init = 0.0
-
-    # Affine parameters
-    for p_affine in ["a11", "a22", "c1", "c2"]:
-        params.add(p_affine, value=val_init)
-
-    if mix:
-        # Linear mixing pararmeters
-        params.add("a12", value=val_init)
-        params.add("a21", value=val_init)
-
-    if order == "quad":
-        # Quadratic parameters
-        for p_quad in ["q111", "q222"]:
-            params.add(p_quad, value=val_init)
-
-        if mix:
-            # Quadratic mixing parameters
-            for p_quad_mix in ["q112", "q122", "q212", "q211"]:
-                params.add(p_quad_mix, value=val_init)
-
+    if params is None:
+        params = init_parameters(mix, order)
+        
     # Mininise loss function
     err = 1 / np.sqrt(weights) if weights is not None else np.ones_like(y[0])
-    res = minimize(loss_bias_2d, params, args=(x, y, err, order, mix))
+    
     if stats_file:
         print_stats(
             f"2D fit order={order} mix={mix}:",
             stats_file,
             verbose=verbose,
         )
-        print_fit_report(res, file=stats_file)
-    if verbose:
-        print_fit_report(res)
 
-    return res.params
-
+    try:
+        res = minimize(loss_bias_2d, params, args=(x, y, err, order, mix), method="leastsq")
+        if stats_file:
+            print_fit_report(res, file=stats_file)
+        if verbose:
+            print_fit_report(res)
+        return res.params
+    except Exception as e:
+        if verbose:
+            print("Minimizing failed, str(e)")
+        # Return prior parameter
+        return params
 
 def affine_corr(
     x,
@@ -954,6 +988,7 @@ def affine_corr(
     verbose=False,
     seed=None,
     rng=None,
+    do_plots=True,
 ):
     """Affine Corr.
 
@@ -989,6 +1024,8 @@ def affine_corr(
         Seed to initialize the randoms. [Default: None]
     rng: numpy.random.RandomState
         Random generator. [Default: None]
+    do_plots : bool, optional
+            create plots if ``True`` (default)
 
     Returns
     -------
@@ -1032,6 +1069,10 @@ def affine_corr(
     diff_size = size_all - size_bin
 
     # Prepare arrays for binned data
+    x = np.asarray(x)
+    weights = np.asarray(weights)
+    for j in range(len(y)):
+        y[j] = np.asarray(y[j])
     x_arg_sort = np.argsort(x)
     x_bin = []
     y_bin = []
@@ -1040,6 +1081,7 @@ def affine_corr(
     for idx in range(len(y)):
         y_bin.append([])
         err_bin.append([])
+
 
     # Bin data for plot
     for idx in range(n_bin):
@@ -1053,12 +1095,15 @@ def affine_corr(
             starter + idx * bin_size_tmp : starter + (idx + 1) * bin_size_tmp
         ]
 
-        x_bin.append(np.mean(x[ind]))
-
+        x_ind = x[ind]
+        weights_ind = weights[ind]
+        
+        x_bin.append(np.mean(x_ind))
         for j in range(len(y)):
+            y_j_ind = y[j][ind]
             r_jk = jackknife_mean_std(
-                y[j][ind],
-                weights[ind],
+                y_j_ind,
+                weights_ind,
                 remove_size=0.2,
                 n_realization=50,
             )
@@ -1081,46 +1126,56 @@ def affine_corr(
         params = Parameters()
         params.add("m", value=0.01)
         params.add("c", value=0.01)
-        res = minimize(
-            loss_bias_lin_1d, params, args=(x, y[jdx], 1 / np.sqrt(weights))
-        )
 
-        m_arr.append(res.params["m"].value)
-        # MKDEBUG float required?
-        m_err_arr.append(float(res.params["m"].stderr))
         tick_name_arr.append(f"{xlabel}_e{jdx+1}")
 
-        m_dm = ufloat(res.params["m"].value, res.params["m"].stderr)
-        c_dc = ufloat(res.params["c"].value, res.params["c"].stderr)
-        label = rf"${mlabel[jdx]}={m_dm: .2ugL}, {clabel[jdx]}={c_dc: .2ugL}$"
-        plt.plot(
-            x_bin,
-            func_bias_lin_1d(res.params, x_bin),
-            c=colors[jdx],
-            label=label,
-        )
-        plt.errorbar(
-            x_bin, y_bin[jdx], yerr=err_bin[jdx], c=colors[jdx], fmt="."
-        )
+        try:
+            res = minimize(
+                loss_bias_lin_1d, params, args=(x, y[jdx], 1 / np.sqrt(weights))
+            )
 
-        if stats_file:
-            msg = "{}: {}={:.2ugP}".format(xlabel, mlabel[jdx], m_dm)
-            print_stats(msg, stats_file, verbose=verbose)
+            m_arr.append(res.params["m"].value)
+            m_err_arr.append(float(res.params["m"].stderr))
 
-    # Finalise plots
-    plt_xmin, plt_xmax = plt.xlim()
-    plt.xlim(plt_xmin, plt_xmax)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.legend()
+            if do_plots:
+                m_dm = ufloat(res.params["m"].value, res.params["m"].stderr)
+                c_dc = ufloat(res.params["c"].value, res.params["c"].stderr)
+                label = rf"${mlabel[jdx]}={m_dm: .2ugL}, {clabel[jdx]}={c_dc: .2ugL}$"
+                plt.plot(
+                    x_bin,
+                    func_bias_lin_1d(res.params, x_bin),
+                    c=colors[jdx],
+                    label=label,
+                )
+                plt.errorbar(
+                    x_bin, y_bin[jdx], yerr=err_bin[jdx], c=colors[jdx], fmt="."
+                )
 
-    plt.title(title)
-    plt.tight_layout()
+            if stats_file:
+                msg = "{}: {}={:.2ugP}".format(xlabel, mlabel[jdx], m_dm)
+                print_stats(msg, stats_file, verbose=verbose)
 
-    if out_path:
-        plt.savefig(out_path, bbox_inches="tight")
+        except Exception as e:
+            if verbose:
+                print("Minimizing failed, str(e)")
 
-    plt.close()
+            m_arr.append(-1.0)
+            m_err_arr.append(1.0)
+
+    if do_plots:
+        # Finalise plots
+        plt_xmin, plt_xmax = plt.xlim()
+        plt.xlim(plt_xmin, plt_xmax)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.legend()
+
+        plt.title(title)
+        plt.tight_layout()
+    
+        if out_path:
+            plt.savefig(out_path, bbox_inches="tight")
+        plt.close()
 
     return m_arr, m_err_arr, tick_name_arr
 
@@ -1193,6 +1248,7 @@ def affine_corr_n(
     stats_file=None,
     verbose=False,
     seed=None,
+    do_plots=True,
 ):
     """Affine Corr N.
 
@@ -1226,6 +1282,8 @@ def affine_corr_n(
         verbose output if True
     seed: int
         Seed to initialize the randoms. [Default: None]
+    do_plots : bool, optional
+            create plots if ``True`` (default)
 
     """
     master_rng = np.random.RandomState(seed)
@@ -1241,11 +1299,10 @@ def affine_corr_n(
     ):
 
         out_path_txt = f"{out_path}.txt"
-        if os.path.exists(out_path_txt):
+        if os.path.exists(out_path_txt) and out_path_txt != "None.txt":
             print(f"Reading regression result from file {out_path_txt}.")
             m, m_err, tick_name = read_regr_res_from_file(out_path_txt)
         else:
-            print(f"Running regression, writing result to file {out_path_txt}.")
             m, m_err, tick_name = affine_corr(
                 x,
                 y,
@@ -1261,8 +1318,10 @@ def affine_corr_n(
                 stats_file=stats_file,
                 verbose=verbose,
                 seed=seed_tmp,
+                do_plots=do_plots,
             )
-            write_regr_res_to_file(m, m_err, tick_name, out_path_txt)
+            if out_path_txt != "None.txt":
+                write_regr_res_to_file(m, m_err, tick_name, out_path_txt)
         m_arr.extend(m)
         m_err_arr.extend(m_err)
         tick_name_arr.extend(tick_name)
