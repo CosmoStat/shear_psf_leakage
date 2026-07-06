@@ -11,6 +11,7 @@ from contextlib import contextmanager
 
 import numpy as np
 import pandas as pd
+from astropy import coordinates as coords
 from astropy import units
 from astropy.io import fits
 from cs_util import args as cs_args
@@ -76,7 +77,7 @@ def save_alpha(theta, alpha_leak, sig_alpha_leak, sh, output_dir):
     cols = [theta, alpha_leak, sig_alpha_leak]
     names = ["# theta[arcmin]", "alpha", "sig_alpha"]
     fname = f"{output_dir}/alpha_leakage_{sh}.txt"
-    write_ascii_table_file(cols, names, fname)
+    cs_cat.write_ascii_table_file(cols, names, fname)
 
 
 def save_xi_sys(
@@ -467,7 +468,7 @@ class LeakageScale:
         else:
             # Get index list of multiple objects
             idx_mult = np.where(multiples)[0]
-            if self._params["mode"] == "average":
+            if self._params["close_pair_mode"] == "average":
                 # Initialise additional data vector
                 dat_PSF_mult = {}
                 for col in dat_PSF.dtype.names:
@@ -498,7 +499,7 @@ class LeakageScale:
                     done = np.append(done, ww)
                     n_avg_rem += len(ww) - 1
 
-                n_avg = len(dat_PSF_mult[ra_star_col])
+                n_avg = len(dat_PSF_mult[self._params["ra_star_col"]])
                 leakage.print_stats(
                     f"adding {n_avg}/{n_star} = {n_avg / n_star:.1%} "
                     + "averaged objects",
@@ -510,7 +511,7 @@ class LeakageScale:
                     dat_PSF_proc[col] = np.append(
                         dat_PSF_proc[col], dat_PSF_mult[col]
                     )
-            elif mode == "remove":
+            elif self._params["close_pair_mode"] == "remove":
                 n_rem = len(idx_mult)
                 leakage.print_stats(
                     f"removing {n_rem}/{n_star} = {n_rem / n_star:.1%} "
@@ -534,7 +535,7 @@ class LeakageScale:
             self._stats_file,
             verbose=self._params["verbose"],
         )
-        if mode == "average":
+        if self._params["close_pair_mode"] == "average":
             leakage.print_stats(
                 f"Check: n_non_close + n_avg + n_avg_rem = n_star? "
                 + f"{n_non_close} + {n_avg} + {n_avg_rem} = "
@@ -542,7 +543,7 @@ class LeakageScale:
                 self._stats_file,
                 verbose=self._params["verbose"],
             )
-        elif mode == "remove":
+        elif self._params["close_pair_mode"] == "remove":
             leakage.print_stats(
                 f"Check: n_non_close + n_rem = n_star? {n_non_close} "
                 + f"+ {n_rem} = {n_non_close + n_rem} ({n_star})",
