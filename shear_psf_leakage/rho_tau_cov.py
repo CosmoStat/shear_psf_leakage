@@ -61,6 +61,21 @@ class CovTauTh:
         # Load the catalogs
         cat_gal, cat_psf = fits.getdata(path_gal), fits.open(path_psf)[hdu_psf].data
 
+        mask_star = kwargs.get("mask_star", None)
+        mask_gal = kwargs.get("mask_gal", None)
+
+        if mask_star is not None:
+            if mask_star.shape[0] != cat_psf.shape[0]:
+                raise ValueError(
+                    "The shape of the mask_star does not match the shape of the PSF catalog."
+                )
+            cat_psf = cat_psf[mask_star]
+        if mask_gal is not None:
+            if mask_gal.shape[0] != cat_gal.shape[0]:
+                raise ValueError(
+                    "The shape of the mask_gal does not match the shape of the galaxy catalog."
+                )
+            cat_gal = cat_gal[mask_gal]
         nside = kwargs.get("nside", 2**12)
         self.A = self.get_area(cat_gal, nside) * 60 * 60  # area in arcmin^2
         self.n_e = self.get_effective_number_density(cat_gal)
