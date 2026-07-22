@@ -3265,7 +3265,24 @@ class PSFErrorFit:
             plt.show()
         plt.close()
 
-    def compute_xi_psf_sys_term(self, theta, term):
+    def _unpack_theta(self, theta):
+        alpha, beta = theta[0], theta[1]
+        idx = 2
+
+        if self.use_eta:
+            eta = theta[idx]
+            idx += 1
+        else:
+            eta = 0.0
+
+        if self.use_fourth_moment:
+            alpha_4, beta_4 = theta[idx], theta[idx + 1]
+        else:
+            alpha_4, beta_4 = 0.0, 0.0
+
+        return alpha, beta, eta, alpha_4, beta_4
+
+    def compute_xi_psf_sys_term(self, theta_a, theta_b, term, p_or_m="p"):
         """
         Compute Xi Psf Sys Term.
 
@@ -3273,67 +3290,63 @@ class PSFErrorFit:
 
         Parameters
         ----------
-        theta : tuple
-            Parameters (alpha, beta, eta) used to compute the systematic error
+        theta_a : tuple
+            Parameters (alpha, beta, (eta), (alpha_4, beta_4)) used to compute the systematic error from tomo_bin_a.
+
+        theta_b : tuple
+            Parameters (alpha, beta, (eta), (alpha_4, beta_4)) used to compute the systematic error from tomo_bin_b.
 
         term : int
-            term (rho function) number, from 0 to 5
+            term (rho function) number, from 0 to 14
+
+        p_or_m : str
+            If "p", compute the systematic error on the xi+ correlation. If "m", compute the systematic error on the xi- correlation.
 
         Return
         ------
         np.array
             xi_psf_sys
         """
-        if self.use_eta and self.use_fourth_moment:
-            alpha, beta, eta, alpha_4, beta_4 = theta
-        elif self.use_eta and (not self.use_fourth_moment):
-            alpha, beta, eta = theta
-            alpha_4, beta_4 = 0.0, 0.0
-        elif (not self.use_eta) and self.use_fourth_moment:
-            alpha, beta, alpha_4, beta_4 = theta
-            eta = 0.0
-        else:
-            alpha, beta = theta
-            eta = 0.0
-            alpha_4, beta_4 = 0.0, 0.0
+        alpha_a, beta_a, eta_a, alpha_4_a, beta_4_a = self._unpack_theta(theta_a)
+        alpha_b, beta_b, eta_b, alpha_4_b, beta_4_b = self._unpack_theta(theta_b)
         if term == 0:
-            prefactor = alpha**2
+            prefactor = alpha_a * alpha_b
         elif term == 1:
-            prefactor = beta**2
+            prefactor = beta_a * beta_b
         elif term == 3:
-            prefactor = eta**2
+            prefactor = eta_a * eta_b
         elif term == 2:
-            prefactor = 2 * alpha * beta
+            prefactor = alpha_a * beta_b + beta_a * alpha_b
         elif term == 5:
-            prefactor = 2 * alpha * eta
+            prefactor = alpha_a * eta_b + eta_a * alpha_b
         elif term == 4:
-            prefactor = 2 * beta * eta
+            prefactor = beta_a * eta_b + eta_a * beta_b
         elif term == 6:
-            prefactor = alpha_4**2
+            prefactor = alpha_4_a * alpha_4_b
         elif term == 7:
-            prefactor = 2 * alpha * alpha_4
+            prefactor = alpha_a * alpha_4_b + alpha_4_a * alpha_b
         elif term == 8:
-            prefactor = 2 * alpha_4 * beta
+            prefactor = alpha_4_a * beta_b + beta_a * alpha_4_b
         elif term == 9:
-            prefactor = beta_4**2
+            prefactor = beta_4_a + beta_4_b
         elif term == 10:
-            prefactor = 2 * alpha_4 * beta_4
+            prefactor = alpha_4_a * beta_4_b + beta_4_a * alpha_4_b
         elif term == 11:
-            prefactor = 2 * beta_4 * beta
+            prefactor = beta_4_a * beta_b + beta_a * beta_4_b
         elif term == 12:
-            prefactor = 2 * beta_4 * alpha
+            prefactor = beta_4_a * alpha_b + alpha_a * beta_4_b
         elif term == 13:
-            prefactor = 2 * alpha_4 * eta
+            prefactor = alpha_4_a * eta_b + eta_a * alpha_4_b
         elif term == 14:
-            prefactor = 2 * beta_4 * eta
+            prefactor = beta_4_a * eta_b + eta_a * beta_4_b
         else:
             raise ValueError(f"Invalid term {term}")
         if prefactor == 0:
             return np.zeros_like(self.rho_stat_handler.rho_stats["theta"])
         else:
-            return prefactor * self.rho_stat_handler.rho_stats[f"rho_{term}_p"]
+            return prefactor * self.rho_stat_handler.rho_stats[f"rho_{term}_{p_or_m}"]
 
-    def compute_xi_psf_sys(self, theta):
+    def compute_xi_psf_sys(self, theta_a, theta_b=None, p_or_m="p"):
         """
         Compute Xi Psf Sys.
 
@@ -3341,9 +3354,14 @@ class PSFErrorFit:
 
         Parameters
         ----------
-        theta : tuple
-            Parameters (alpha, beta, eta) used to compute the systematic error
+        theta_a : tuple
+            Parameters (alpha, beta, (eta), (alpha_4, beta_4)) used to compute the systematic error from tomo bin a.
 
+        theta_b : tuple
+            Parameters (alpha, beta, (eta), (alpha_4, beta_4)) used to compute the systematic error from tomo bin b. If None, use tomo_bin_a only
+
+        p_or_m : str
+            If "p", compute the systematic error on the xi+ correlation. If "m", compute the systematic error on the xi- correlation.
         Return
         ------
         np.array
@@ -3352,23 +3370,24 @@ class PSFErrorFit:
 
         xi_psf_sys = np.zeros_like(self.rho_stat_handler.rho_stats["theta"])
 
+        terms = [0, 1, 2]
+
+        if self.use_eta:
+            terms += [3, 4, 5]
+
+        if self.use_fourth_moment:
+            terms += [7, 8, 9, 10, 11, 12]
+
         if self.use_eta and self.use_fourth_moment:
-            terms = range(15)
-        elif self.use_eta and (not self.use_fourth_moment):
-            terms = range(6)
-        elif (not self.use_eta) and self.use_fourth_moment:
-            terms = [0, 1, 2, 7, 8, 9, 10, 11, 12]
-        else:
-            terms = range(3)
+            terms += [6, 13, 14]
 
+        terms = sorted(terms)  # keep index 6 in the right place among the others
+
+        if theta_b is None:
+            theta_b = theta_a
         for term in terms:
-            xi_psf_sys += self.compute_xi_psf_sys_term(theta, term)
-
-            # alpha ** 2 * self.rho_stat_handler.rho_stats["rho_0_p"]
-            # + beta ** 2 * self.rho_stat_handler.rho_stats["rho_1_p"]
-            # + eta ** 2 * self.rho_stat_handler.rho_stats["rho_3_p"]
-            # + 2 * alpha * beta * self.rho_stat_handler.rho_stats["rho_2_p"]
-            # + 2 * alpha * eta * self.rho_stat_handler.rho_stats["rho_5_p"]
-            # + 2 * beta * eta * self.rho_stat_handler.rho_stats["rho_4_p"]
+            xi_psf_sys += self.compute_xi_psf_sys_term(
+                theta_a, theta_b, term, p_or_m=p_or_m
+            )
 
         return xi_psf_sys
