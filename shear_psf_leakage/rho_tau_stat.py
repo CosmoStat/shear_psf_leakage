@@ -1191,6 +1191,7 @@ class RhoStat:
         colors,
         catalog_ids,
         abs=True,
+        offset=0,
         savefig=None,
         legend="each",
         title=None,
@@ -1215,6 +1216,9 @@ class RhoStat:
 
         abs : bool
             If True, plot the absolute value of the rho-statistics. Otherwise, plot the negative values with dashed lines.
+
+        offset : float
+            Offset to apply to the different versions for better visualisation.
 
         savefig : str
             If not None, saves the figure with the name given in savefig.
@@ -1249,8 +1253,8 @@ class RhoStat:
         fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(15, 9))
         ax = ax.flatten()
 
-        for filename, color, cat_id in zip(
-            filenames, colors, catalog_ids
+        for file_idx, (filename, color, cat_id) in enumerate(
+            zip(filenames, colors, catalog_ids)
         ):  # Plot for the different catalogs
             self.load_rho_stats(filename)
 
@@ -1260,13 +1264,22 @@ class RhoStat:
                 ylabel = rf"$\rho_{i}(\theta)$"
                 label = rf"{cat_id}"
 
+                theta = self.rho_stats["theta"]
+
+                theta_widths = np.diff(theta)
+                theta_widths = np.append(theta_widths, theta_widths[-1])
+
+                jitter_fraction = (file_idx - (len(filenames) - 1) / 2) * offset
+                jittered_theta = theta + jitter_fraction * theta_widths
+
                 if abs:
                     ax[i].errorbar(
-                        self.rho_stats["theta"],
+                        jittered_theta,
                         np.abs(self.rho_stats["rho_" + str(i) + "_p"]),
                         yerr=np.sqrt(self.rho_stats["varrho_" + str(i) + "_p"]),
                         label=label,
                         color=color,
+                        fmt="o",
                         capsize=2,
                     )
                     ax[i].set_xlabel(xlabel)
@@ -1277,7 +1290,7 @@ class RhoStat:
                     # Plot the negative values of the rho-stats in dashed lines
                     neg_dash(
                         ax[i],
-                        self.rho_stats["theta"],
+                        jittered_theta,
                         self.rho_stats["rho_" + str(i) + "_p"],
                         yerr_in=np.sqrt(self.rho_stats["varrho_" + str(i) + "_p"]),
                         vertical_lines=False,
@@ -1287,7 +1300,7 @@ class RhoStat:
                         ylabel=ylabel,
                         semilogx=True,
                         semilogy=True,
-                        capsize=True,
+                        capsize=2,
                         color=color,
                     )
                 ax[i].set_xlim(
@@ -1808,12 +1821,16 @@ class TauStat:
         filenames,
         colors,
         catalog_ids,
+        cov_paths=None,
+        offset=0,
         savefig=None,
         plot_tau_m=True,
         plot_theta_times_tau=True,
         legend="inside",
         show=False,
         close=True,
+        fmt="",
+        capsize=2,
     ):
         """
         plot_tau_stats
@@ -1830,6 +1847,12 @@ class TauStat:
 
         catalogs_id : list str
             A list of catalogs id to label accurately the legend.
+
+        cov_paths : list str
+            The paths to the covariance to use. If None the covariance saved in the tau-stats object is used.
+
+        offset : float
+            Offset to apply to the different versions for better visualisation.
 
         savefig : str
             If not None, saves the figure with the name given in savefig.
@@ -1848,6 +1871,12 @@ class TauStat:
 
         close : bool, optional
             If True, closes the plot after saving/showing. Default is True.
+
+        fmt : str, optional
+            Format string for the plot. Default is ''.
+
+        capsize : int, optional
+            Cap size for error bars. Default is 2.
 
         Return
         ------
@@ -1876,15 +1905,44 @@ class TauStat:
 
         fig, ax = plt.subplots(nrows=nrows, ncols=3, figsize=(15, 6))
 
+        if cov_paths is not None:
+            print("Using the error bars from the covariance files for the + part.")
+        else:
+            print("Using the error bars from the tau-statistics files for the + part.")
+
         if nrows == 1:
             ax = ax.reshape(1, 3)
 
         for i in range(3):
             for j in range(nrows):
-                for filename, color, cat_id in zip(
-                    filenames, colors, catalog_ids
+                iterator_ = (
+                    zip(filenames, colors, catalog_ids)
+                    if cov_paths is None
+                    else zip(filenames, colors, catalog_ids, cov_paths)
+                )
+                for file_idx, item in enumerate(
+                    iterator_
                 ):  # Plot for the different catalogs
+                    if cov_paths is None:
+                        filename, color, cat_id = item
+                    else:
+                        filename, color, cat_id, cov_path = item
+                        cov_tau = np.load(self.catalogs._output + "/" + cov_path)
+
                     self.load_tau_stats(filename)
+                    if cov_paths is not None:
+                        if cov_tau.shape[0] != self.tau_stats["theta"].shape[0] * 3:
+                            raise ValueError(
+                                f"The covariance file {cov_path} has a different number of theta points\n"
+                                f"than the tau statistics file {filename}. Please check your files.\n"
+                                f"Covariance shape: {cov_tau.shape}, Tau shape: {self.tau_stats['theta'].shape}"
+                            )
+                        # Check if the covariance is a square matrix
+                        if cov_tau.shape[0] != cov_tau.shape[1] or cov_tau.ndim != 2:
+                            raise ValueError(
+                                f"The covariance file {cov_path} is not a square matrix."
+                            )
+
                     p_or_m = "m" if j else "p"
                     p_or_m_label = "-" if j else "+"
                     xlabel = r"$\theta$ [arcmin]" if (j == nrows - 1) else ""
@@ -1903,20 +1961,37 @@ class TauStat:
                         self.tau_stats["tau_" + dict_index_tau[i] + "_" + p_or_m]
                         * factor_theta
                     )
-                    yerr_in = (
-                        np.sqrt(
-                            self.tau_stats["vartau_" + dict_index_tau[i] + "_" + p_or_m]
+                    if cov_path is None or p_or_m == "m":
+                        cov_diag = self.tau_stats[
+                            "vartau_" + dict_index_tau[i] + "_" + p_or_m
+                        ]
+                    else:
+                        num_theta_bins = factor_theta.shape[0]
+                        cov_diag = np.diag(
+                            cov_tau[
+                                i * num_theta_bins : (i + 1) * num_theta_bins,
+                                i * num_theta_bins : (i + 1) * num_theta_bins,
+                            ]
                         )
-                        * factor_theta
-                    )
+
+                    yerr_in = np.sqrt(cov_diag) * factor_theta
+
+                    theta = self.tau_stats["theta"]
+
+                    theta_widths = np.diff(theta)
+                    theta_widths = np.append(theta_widths, theta_widths[-1])
+
+                    jitter_fraction = (file_idx - (len(filenames) - 1) / 2) * offset
+                    jittered_theta = theta + jitter_fraction * theta_widths
 
                     ax[j, i].errorbar(
-                        self.tau_stats["theta"],
+                        jittered_theta,
                         y,
                         yerr=yerr_in,
                         label=label,
                         color=color,
-                        capsize=2,
+                        fmt=fmt,
+                        capsize=capsize,
                     )
                 ax[j, i].set_xlim(
                     self._treecorr_config["min_sep"],
@@ -2430,11 +2505,15 @@ class PSFErrorFit:
             print("Autocorrelation-time:")
             print(tau)
 
-        labels = [r"$\alpha$", r"$\beta$", r"$\eta$", r"$\alpha_4$", r"$\beta_4$"]
+        labels = [r"$\alpha$", r"$\beta$"]
+        if self.use_eta:
+            labels += [r"$\eta$"]
+        if self.use_fourth_moment:
+            labels += [r"$\alpha_4$", r"$\beta_4$"]
 
         if savefig is not None:
             fig, axes = plt.subplots(
-                5, figsize=(10, 7), sharex=True
+                ndim, figsize=(10, 7), sharex=True
             )  # Result completely unconstrained. have another look at the covariance matrix
             samples = sampler.get_chain()
             for i in range(ndim):
