@@ -3236,7 +3236,7 @@ class PSFErrorFit:
         )
 
         for term in range(6):
-            xi_psf_sys_term = self.compute_xi_psf_sys_term(theta, term)
+            xi_psf_sys_term = self.compute_xi_psf_sys_term(theta, theta, term)
             xi_sum += xi_psf_sys_term
             if xi_psf_sys_term[-1] > 0:
                 linewidth = linewidth_pos
@@ -3328,7 +3328,7 @@ class PSFErrorFit:
         elif term == 8:
             prefactor = alpha_4_a * beta_b + beta_a * alpha_4_b
         elif term == 9:
-            prefactor = beta_4_a + beta_4_b
+            prefactor = beta_4_a * beta_4_b
         elif term == 10:
             prefactor = alpha_4_a * beta_4_b + beta_4_a * alpha_4_b
         elif term == 11:
