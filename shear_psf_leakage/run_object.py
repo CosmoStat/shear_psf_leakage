@@ -173,32 +173,30 @@ class LeakageObject:
             "stats_file_leakage.txt",
         )
 
-    def read_data(self):
+    def read_data(self, selection=None):
         """Read Data.
 
         Read input catalogue with galaxy and PSF information.
+
+        A selection can be provided to select a subset of the catalogue. It must be computed outside of this function and passed as a boolean array.
 
         """
         # Open Fits file of the input shear catalogue
         hdu_list = fits.open(self._params["input_path_shear"])
         self._dat = hdu_list[1].data
         hdu_list.close()
+        if selection is not None:
+            if selection.shape[0] != self._dat.shape[0]:
+                raise ValueError("Selection array has different length than catalogue")
+            self._dat = self._dat[selection]
 
     @contextmanager
-    def temporarily_read_data(self):
-        if self._dat is None:
-            do_nothing = False
-        else:
-            print("Catalogs already loaded, doing nothing.")
-            do_nothing = True
-
+    def temporarily_read_data(self, selection=None):
         try:
-            if not do_nothing:
-                self.read_data()
+            self.read_data(selection=selection)
             yield self._dat
         finally:
-            if not do_nothing:
-                self._dat = None
+            self._dat = None
 
     def corr_any_quant(self, label_quant=None, ratio=None):
         """Corr_any_quant.
@@ -462,17 +460,19 @@ class LeakageObject:
 
         return e, weights
 
-    def get_out_base(self, mix, order):
+    def get_out_base(self, mix, order, suffix=""):
         """Get Out Base.
 
         Return output file base name.
 
         """
+        suffix = f"-{suffix}" if suffix else ""
         return (
-            f"{self._params['output_dir']}" + f"/PSF_e_vs_e_gal_order-{order}_mix-{mix}"
+            f"{self._params['output_dir']}"
+            + f"/PSF_e_vs_e_gal_order-{order}_mix-{mix}{suffix}"
         )
 
-    def PSF_leakage(self, mix=True, order="lin"):
+    def PSF_leakage(self, mix=True, order="lin", suffix=""):
         """PSF Leakage.
 
         Compute and plot object-by-object PSF spin-consistent leakage relations.
@@ -504,13 +504,13 @@ class LeakageObject:
             self._dat[self._params["size_PSF_col"]],
         ]
         out_name_arr = [
-            "PSF_e1_vs_e_gal",
-            "PSF_e2_vs_e_gal",
-            "PSF_size_vs_e_gal",
+            f"PSF_e1_vs_e_gal_{suffix}",
+            f"PSF_e2_vs_e_gal_{suffix}",
+            f"PSF_size_vs_e_gal_{suffix}",
         ]
 
         # Fit consistent spin-2 2D model
-        out_base = self.get_out_base(mix, order)
+        out_base = self.get_out_base(mix, order, suffix=suffix)
         out_path = f"{out_base}.pkl"
         if not os.path.exists(out_path):
             if self._params["verbose"]:
@@ -601,7 +601,7 @@ class LeakageObject:
             )
         self.corr_any_quant(label_quant, ratio=self._params["cols_ratio"])
 
-    def run(self, mix=None, order=None):
+    def run(self, mix=None, order=None, selection=None):
         """Run.
 
         Parameters
@@ -612,6 +612,8 @@ class LeakageObject:
         order : list, optional
             list of str; allowed are "lin" (linear fit) and "quad" (quadratic
             fit); default is `None` in which case both options will be run
+        selection : array-like, optional
+            boolean array to select a subset of the catalogue; default is `None` (no selection applied)
 
         Main processing of scale-dependent leakage.
 
@@ -633,7 +635,7 @@ class LeakageObject:
             obj.test()
 
         else:
-            obj.read_data()
+            obj.read_data(selection=selection)
 
             if obj._params["PSF_leakage"]:
                 # Object-by-object spin-consistent PSF leakage
