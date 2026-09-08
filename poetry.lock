@@ -2796,19 +2796,6 @@ files = [
 global = ["pybind11-global (==3.1.0)"]
 
 [[package]]
-name = "pyccl"
-version = "3.0.0"
-description = "Library of validated cosmological functions."
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "pyccl-3.0.0.tar.gz", hash = "sha256:4e1f9eaed0caaac864575f96ab51f3e7669b69afd92c21085deb53ded09bf9b1"},
-]
-
-[package.dependencies]
-numpy = "*"
-
-[[package]]
 name = "pycparser"
 version = "2.21"
 description = "C parser in Python"
@@ -4024,4 +4011,4 @@ testing = ["coverage (>=5.0.3)", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9,<4"
-content-hash = "940a0f36c2251e9e3b6bf0b6670a7c62608002b72a595149d0891e9a44d831f6"
+content-hash = "a100f1fbcf274e5c6833b536baff030fee6be789be0b5934c061342a73c705fe"
