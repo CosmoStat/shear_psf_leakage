@@ -28,8 +28,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install --no-interaction --only main
-          poetry run pip install "pytest<7"
+          poetry install --no-interaction --with dev
 
       - name: Run tests
         run: poetry run pytest tests/

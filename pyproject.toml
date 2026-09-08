@@ -10,7 +10,7 @@ authors = [
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<4"
+python = ">=3.10,<3.13"
 swig = "^4.1.1"
 pyyaml = "^6.0.1"
 lmfit = "^1.2.2"
@@ -30,14 +30,15 @@ jupyter-server = "^2.8.0"
 jupyterlab = "^4.0.7"
 tornado = "^6.3.3"
 lenspack = "^1.0.0"
+pyccl = "^3.0.0"
 getdist = "^1.4.7"
 tqdm = "^4.66.2"
 emcee = "^3.1.4"
 gsl = "^0.0.3"
-cs-util = ">=0.0.6,<0.1"
+cs-util = ">=0.1.0,<0.3"
 
-[tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
 pydocstyle = "^6.3.0"
 pytest-cov = "^4.1.0"
 black = "^23.7.0"

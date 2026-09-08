@@ -4,6 +4,8 @@ from contextlib import contextmanager
 import numpy as np
 
 from astropy.io import fits
+from cs_util import args as cs_args
+from cs_util import logging
 from lmfit import Parameters
 
 from matplotlib import pyplot as plt
@@ -30,9 +32,6 @@ class LeakageObject:
         Does not work from ipython or jupyter.
 
         """
-        from cs_util import args as cs_args
-        from cs_util import logging
-
         # Read command line options
         options = cs_args.parse_options(
             self._params,
