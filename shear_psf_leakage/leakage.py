@@ -18,7 +18,6 @@ import re
 import matplotlib.pylab as plt
 import numpy as np
 from astropy.io import fits
-from cs_util import args as cs_args
 from lmfit import Parameters, minimize
 from uncertainties import ufloat
 
@@ -1137,6 +1136,8 @@ def read_regr_res_from_file(path):
         list of slopes
 
     """
+    from cs_util import args as cs_args
+
     with open(path, "r") as f:
         str_m = f.readline()
         m = cs_args.my_string_split(str_m, num=2, stop=True)
