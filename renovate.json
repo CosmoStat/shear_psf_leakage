@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "THE ONLY Renovate config file \u2014 do not add another (a second config file such as .github/renovate.json5 silently shadows this one; see the same note in shapepipe).",
+    "forkProcessing is enabled because this repo is a GitHub fork of martinkilbinger/shear_psf_leakage; Renovate skips forks by default.",
+    "Same policy as shapepipe / sp_validation / cs_util: all non-major updates grouped into one weekly PR that automerges when CI (.github/workflows/ci.yml: poetry install + pytest on py3.11) is green; majors gated behind a dashboard-approval tick; security fixes automerge off-schedule; lockFileMaintenance refreshes poetry.lock weekly. Poetry owns resolution; rangeStrategy=update-lockfile means in-range releases land as lockfile bumps rather than pyproject edits."
+  ],
+  "extends": [
+    "config:recommended",
+    "group:allNonMajor",
+    "schedule:weekly",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "forkProcessing": "enabled",
+  "rangeStrategy": "update-lockfile",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "automerge": true,
+    "labels": [
+      "security"
+    ]
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "automerge": true
+    },
+    {
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "matchDepNames": [
+        "python"
+      ],
+      "groupName": "python",
+      "automerge": false,
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

@@ -1,3 +1,10 @@
+import pytest
+
+pytest.skip(
+    "requires external survey catalogues that are not available in CI",
+    allow_module_level=True,
+)
+
 import sys
 
 sys.path.append("../shear_psf_leakage")
