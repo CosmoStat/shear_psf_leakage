@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop, main, chore/renovate-config]
   pull_request:
     branches: [develop, main]
   workflow_dispatch:
@@ -15,20 +15,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.11"
-
-      - name: Install Poetry
-        run: pipx install poetry==1.7.1
-
-      - name: Select the configured Python for Poetry
-        run: poetry env use "$pythonLocation/bin/python"
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          poetry install --no-interaction --with dev
+        run: uv sync --frozen --group dev
 
       - name: Run tests
-        run: poetry run pytest tests/
+        run: uv run pytest tests/
