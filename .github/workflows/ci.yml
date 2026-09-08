@@ -23,8 +23,13 @@ jobs:
       - name: Install Poetry
         run: pipx install poetry==1.7.1
 
+      - name: Select the configured Python for Poetry
+        run: poetry env use "$pythonLocation/bin/python"
+
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: |
+          poetry install --no-interaction --only main
+          poetry run pip install "pytest<7"
 
       - name: Run tests
         run: poetry run pytest tests/
