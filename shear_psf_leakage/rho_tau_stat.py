@@ -15,6 +15,10 @@ from astropy.io import fits
 from astropy.table import Table
 from tqdm import tqdm
 
+#: Seed for the k-means jackknife patch centres when ``params`` has no
+#: ``patch_seed`` entry, so repeated runs on the same input give the same patches.
+DEFAULT_PATCH_SEED = 1234
+
 
 def neg_dash(
     ax,
@@ -203,6 +207,7 @@ class Catalogs:
         -theta_max: 100
         -n_theta: 20
         -var_method: jackknife !!Requires to set a patch number for the different catalogues!!
+        The k-means patch centres are seeded with ``patch_seed``.
         """
 
         self._params = {
@@ -226,6 +231,7 @@ class Catalogs:
             "PSF_flag": "HSM_FLAG_PSF",
             "star_flag": "HSM_FLAG_STAR",
             "patch_number": 120,
+            "patch_seed": DEFAULT_PATCH_SEED,
             "ra_units": "deg",
             "dec_units": "deg",
         }
@@ -406,6 +412,7 @@ class Catalogs:
         npatch=None,
         patch_centers=None,
         mask=None,
+        patch_seed=None,
     ):
         """
         build_catalogue
@@ -424,12 +431,24 @@ class Catalogs:
         npatch : int
             number of patch used to compute variance with jackknife or bootstrap. (Default: value in self._params)
 
+        patch_centers : np.array
+            Patch centres to assign objects to. If None, centres are found by k-means
+            with ``npatch`` patches. (Default: None)
+
         mask : np.array
             A mask array to select only the relevant objects in the catalogue. If None, no mask is applied. (Default: None)
+
+        patch_seed : int
+            Seed of the k-means patch-centre initialisation, used when
+            ``patch_centers`` is None; identical input and seed give identical
+            patches. (Default: ``self._params["patch_seed"]``, else
+            ``DEFAULT_PATCH_SEED``)
         """
 
         if npatch is None:
             npatch = self._params["patch_number"]
+        if patch_seed is None:
+            patch_seed = self._params.get("patch_seed", DEFAULT_PATCH_SEED)
 
         ra, dec, g1, g2, weights = self.get_cat_fields(cat, cat_type)
 
@@ -446,6 +465,7 @@ class Catalogs:
                 ra_units=self._params["ra_units"],
                 dec_units=self._params["dec_units"],
                 npatch=npatch,
+                rng=np.random.RandomState(patch_seed),
             )
         else:
             cat_tc = treecorr.Catalog(
