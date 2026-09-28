@@ -26,7 +26,7 @@ dependencies = [
     # every get_cosmo path (and pyccl's Boltzmann spline path likewise). camb
     # 1.6.6 is unfixed; lift the cap when camb ships the scipy-1.18 fix. Mirrors
     # the same cap in sp_validation.
-    "scipy>=1.13,<1.18",
+    "scipy>=1.18,<1.19",
     "lenspack>=1.0.0",
     "pyccl>=3.0.0",
     "getdist>=1.4.7",
