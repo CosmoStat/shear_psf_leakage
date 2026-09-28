@@ -4,6 +4,8 @@ to estimate systematic error from the PSF using rho and tau statistics.
 Author: Sacha Guerrini
 """
 
+import os
+
 import numpy as np
 import healpy as hp
 from astropy.io import fits
@@ -37,12 +39,12 @@ class CovTauTh:
 
         Parameters
         ----------
-        path_gal: str
-            Path to the galaxy catalog
-        path_psf: str
-            Path to the PSF catalog
+        path_gal: str, os.PathLike or table
+            Path to the galaxy catalog, or the already-loaded catalogue
+        path_psf: str, os.PathLike or table
+            Path to the PSF catalog, or the already-loaded catalogue
         hdu_psf: int
-            HDU of the PSF catalog
+            HDU of the PSF catalog; unused when ``path_psf`` is a table
         treecorr_config: dict
             Configuration of the treecorr catalogs
         params: dict
@@ -59,7 +61,14 @@ class CovTauTh:
             self.set_params(params)
 
         # Load the catalogs
-        cat_gal, cat_psf = fits.getdata(path_gal), fits.open(path_psf)[hdu_psf].data
+        # A loaded table (anything but a path) is used as-is; it needs only
+        # column access by name, len, and row selection when a mask is given.
+        cat_gal = path_gal
+        if isinstance(path_gal, (str, os.PathLike)):
+            cat_gal = fits.getdata(path_gal)
+        cat_psf = path_psf
+        if isinstance(path_psf, (str, os.PathLike)):
+            cat_psf = fits.open(path_psf)[hdu_psf].data
 
         mask_star = kwargs.get("mask_star", None)
         mask_gal = kwargs.get("mask_gal", None)
