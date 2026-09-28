@@ -18,15 +18,10 @@ dependencies = [
     "matplotlib>=3.7.2",
     "stats>=0.1.2a0",
     "pandas>=2.0.3",
-    "camb>=1.5.9",
-    # Cap scipy < 1.18: scipy 1.18 ported FITPACK from Fortran to C, changing
-    # RectBivariateSpline(scalar, scalar, grid=False) from a 0-d array to a
-    # shape-(1,) array. camb's BBN Y_He predictor then fails set_cosmology with
-    # "only 0-dimensional arrays can be converted to Python scalars", breaking
-    # every get_cosmo path (and pyccl's Boltzmann spline path likewise). camb
-    # 1.6.6 is unfixed; lift the cap when camb ships the scipy-1.18 fix. Mirrors
-    # the same cap in sp_validation.
-    "scipy>=1.18,<1.19",
+    # camb 2.0 is the first release whose BBN Y_He predictor tolerates scipy
+    # 1.18.0's shape-(1,) spline output; older camb fails set_cosmology there.
+    "camb>=2.0",
+    "scipy>=1.13",
     "lenspack>=1.0.0",
     "pyccl>=3.0.0",
     "getdist>=1.4.7",

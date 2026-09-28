@@ -3179,7 +3179,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "camb", specifier = ">=1.5.9" },
+    { name = "camb", specifier = ">=2.0" },
     { name = "cs-util", specifier = ">=0.1.0,<0.3" },
     { name = "emcee", specifier = ">=3.1.4" },
     { name = "getdist", specifier = ">=1.4.7" },
@@ -3195,7 +3195,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.0.3" },
     { name = "pyccl", specifier = ">=3.0.0" },
     { name = "pyyaml", specifier = ">=6.0.1" },
-    { name = "scipy", specifier = ">=1.18,<1.19" },
+    { name = "scipy", specifier = ">=1.13" },
     { name = "stats", specifier = ">=0.1.2a0" },
     { name = "swig", specifier = ">=4.1.1" },
     { name = "tornado", marker = "extra == 'notebooks'", specifier = ">=6.3.3" },
