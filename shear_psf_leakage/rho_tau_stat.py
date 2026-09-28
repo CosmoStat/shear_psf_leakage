@@ -4,6 +4,7 @@ This module sets up a class to compute the rho stats computation
 Author: Sacha Guerrini
 """
 
+import os
 import warnings
 
 import emcee
@@ -252,6 +253,16 @@ class Catalogs:
         Read a shear catalogue with galaxies ('gal') or stars ('psf').
         Only one such catalogue can be loaded at a time.
 
+        Parameters
+        ----------
+        path_gal, path_psf : str, os.PathLike or table
+            Path to the FITS catalogue, or an already-loaded table, which is
+            returned as-is. A table is anything supporting column access by
+            name and ``len``: a numpy structured array, a FITS_rec, or a
+            column view such as sp_validation's grammar adapter.
+        hdu : int, optional
+            HDU of the FITS file to read; unused for a loaded table.
+
         Raises
         ------
         AssertionError: Please specify a path for the shear catalog you want to read.
@@ -259,12 +270,10 @@ class Catalogs:
         assert (path_gal is not None) or (path_psf is not None), (
             "Please specify a path for the shear catalog you want to read."
         )
-        if path_gal is not None:
-            dat_shear = fits.getdata(path_gal, ext=hdu)
-            return dat_shear
-        if path_psf is not None:
-            dat_psf = fits.getdata(path_psf, ext=hdu)
-            return dat_psf
+        cat = path_gal if path_gal is not None else path_psf
+        if isinstance(cat, (str, os.PathLike)):
+            return fits.getdata(cat, ext=hdu)
+        return cat
 
     def get_cat_fields(self, cat, cat_type):
         """
@@ -557,8 +566,9 @@ class RhoStat:
 
         Parameters
         ----------
-        path_cat_star : str
-            Path to the catalog of stars used to compute the rho-statistics.
+        path_cat_star : str, os.PathLike or table
+            Path to the catalog of stars used to compute the rho-statistics,
+            or the already-loaded catalogue (see ``Catalogs.read_shear_cat``).
 
         catalog_id : str
             An id to identify the catalog used in the keys of the stored treecorr.Catalog.
@@ -1398,8 +1408,9 @@ class TauStat:
 
         Parameters
         ----------
-        path_cat : str
-            Path to the catalog built to compute the tau-statistics.
+        path_cat : str, os.PathLike or table
+            Path to the catalog built to compute the tau-statistics, or the
+            already-loaded catalogue (see ``Catalogs.read_shear_cat``).
 
         cat_type : str
             Specify the type of the catalogue to build. 'gal' or 'psf'
