@@ -178,7 +178,8 @@ class LeakageObject:
 
         Read input catalogue with galaxy and PSF information.
 
-        A selection can be provided to select a subset of the catalogue. It must be computed outside of this function and passed as a boolean array.
+        ``selection`` is an optional boolean array over catalogue rows; only the
+        selected rows are kept.
 
         """
         # Open Fits file of the input shear catalogue
@@ -192,11 +193,21 @@ class LeakageObject:
 
     @contextmanager
     def temporarily_read_data(self, selection=None):
+        """Temporarily Read Data.
+
+        Load the catalogue (optionally a row selection of it) for the duration
+        of the context. Without a selection, an already-loaded catalogue is used
+        as is and kept afterwards.
+
+        """
+        keep_loaded = selection is None and self._dat is not None
         try:
-            self.read_data(selection=selection)
+            if not keep_loaded:
+                self.read_data(selection=selection)
             yield self._dat
         finally:
-            self._dat = None
+            if not keep_loaded:
+                self._dat = None
 
     def corr_any_quant(self, label_quant=None, ratio=None):
         """Corr_any_quant.
@@ -483,6 +494,9 @@ class LeakageObject:
             Component mixing (spin-consistent); default is ``True``
         order : str, optional
             regression order; allowed are "lin" (default) and "quad"
+        suffix : str, optional
+            tag appended to the output and cache file names (e.g. a redshift
+            bin); default is no tag
 
         """
         # Set options for plotting
@@ -503,10 +517,11 @@ class LeakageObject:
             self._dat[self._params["e2_PSF_col"]],
             self._dat[self._params["size_PSF_col"]],
         ]
+        name_suffix = f"_{suffix}" if suffix else ""
         out_name_arr = [
-            f"PSF_e1_vs_e_gal_{suffix}",
-            f"PSF_e2_vs_e_gal_{suffix}",
-            f"PSF_size_vs_e_gal_{suffix}",
+            f"PSF_e1_vs_e_gal{name_suffix}",
+            f"PSF_e2_vs_e_gal{name_suffix}",
+            f"PSF_size_vs_e_gal{name_suffix}",
         ]
 
         # Fit consistent spin-2 2D model
@@ -613,7 +628,7 @@ class LeakageObject:
             list of str; allowed are "lin" (linear fit) and "quad" (quadratic
             fit); default is `None` in which case both options will be run
         selection : array-like, optional
-            boolean array to select a subset of the catalogue; default is `None` (no selection applied)
+            boolean array selecting catalogue rows; default is `None` (all rows)
 
         Main processing of scale-dependent leakage.
 
