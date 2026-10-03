@@ -1992,7 +1992,7 @@ class TauStat:
                         self.tau_stats["tau_" + dict_index_tau[i] + "_" + p_or_m]
                         * factor_theta
                     )
-                    if cov_path is None or p_or_m == "m":
+                    if cov_paths is None or p_or_m == "m":
                         cov_diag = self.tau_stats[
                             "vartau_" + dict_index_tau[i] + "_" + p_or_m
                         ]
