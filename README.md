@@ -65,7 +65,8 @@ cross-covariance.
 The returned objects preserve the patch results for this purpose.
 Use the same full galaxy table, response values, selection mask and stars
 for both measurements.
-Centring precedes the selection mask, following the `gal` convention.
+Centring uses the selected galaxies, including a tomographic bin mask,
+for both `gal` and `gal_psf`.
 The rho statistics remain the PSF auto-correlations used to predict
 contamination auto-power; do not replace those products with this template.
 This corrects the alpha template only; beta and eta still use the existing

@@ -284,7 +284,7 @@ class Catalogs:
             return fits.getdata(cat, ext=hdu)
         return cat
 
-    def get_cat_fields(self, cat, cat_type):
+    def get_cat_fields(self, cat, cat_type, mask=None):
         """
         Get Cat Fields
 
@@ -296,6 +296,9 @@ class Catalogs:
             catalogue of galaxies or stars. Type should match the cat_type given in argument.
         cat_type : str
             catalogue type, allowed are 'gal', 'gal_psf', 'psf', 'psf_error' or 'psf_size_error'
+        mask : array of bool, optional
+            Galaxy selection used for the weighted mean. Returned fields
+            retain all rows; ``build_catalog`` applies the selection.
 
         Returns
         -------
@@ -346,11 +349,12 @@ class Catalogs:
                 if cat_type == "gal"
                 else ("e1_gal_PSF_col", "e2_gal_PSF_col")
             )
+            selected = slice(None) if mask is None else mask
             g1 = cat[self._params[col1]] - np.average(
-                cat[self._params[col1]], weights=weights
+                cat[self._params[col1]][selected], weights=weights[selected]
             )
             g2 = cat[self._params[col2]] - np.average(
-                cat[self._params[col2]], weights=weights
+                cat[self._params[col2]][selected], weights=weights[selected]
             )
             if self._params.get("R11", None) is not None:
                 g1 /= self._params["R11"]
@@ -462,7 +466,7 @@ class Catalogs:
         if patch_seed is None:
             patch_seed = self._params.get("patch_seed", DEFAULT_PATCH_SEED)
 
-        ra, dec, g1, g2, weights = self.get_cat_fields(cat, cat_type)
+        ra, dec, g1, g2, weights = self.get_cat_fields(cat, cat_type, mask=mask)
 
         if mask is None:
             mask = np.ones_like(ra, dtype=bool)
@@ -1572,8 +1576,8 @@ class TauStat:
         template/tau covariance.
         Their xi+ values replace only the alpha column of the rho-to-tau
         design; they are not rho statistics for predicting PSF auto-power.
-        The galaxy PSF is centred before the selection mask, matching
-        the galaxy ellipticity definition.
+        The galaxy PSF and galaxy ellipticity are centred on the same
+        selected sample, including a tomographic bin mask.
         """
         fields = ["psf", "psf_error"]
         if self.use_eta:

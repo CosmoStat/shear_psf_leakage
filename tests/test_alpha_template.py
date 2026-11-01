@@ -73,7 +73,7 @@ def test_alpha_template_matches_objectwise_injection(use_eta):
     tau = TauStat(
         params=params, treecorr_config=cfg, use_eta=use_eta, verbose=False
     )
-    # Distinct star and galaxy samples and a mask applied after centring.
+    # Distinct star and galaxy samples and a nontrivial selection mask.
     tau.build_cat_to_compute_tau(data[::3], "psf", "test")
     mask = data["RA"] > 10.5
     tau.build_cat_to_compute_tau(data, "gal_psf", "test", mask=mask)
