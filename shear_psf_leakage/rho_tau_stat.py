@@ -19,6 +19,9 @@ from tqdm import tqdm
 #: ``patch_seed`` entry, so repeated runs on the same input give the same patches.
 DEFAULT_PATCH_SEED = 1234
 
+#: Fix the k-means tree depth independently of the machine's OpenMP thread count.
+DEFAULT_PATCH_MIN_TOP = 6
+
 
 def neg_dash(
     ax,
@@ -455,29 +458,30 @@ class Catalogs:
         if mask is None:
             mask = np.ones_like(ra, dtype=bool)
 
-        if patch_centers is None:
-            cat_tc = treecorr.Catalog(
-                ra=ra[mask],
-                dec=dec[mask],
-                g1=g1[mask],
-                g2=g2[mask],
-                w=weights[mask] if weights is not None else None,
-                ra_units=self._params["ra_units"],
-                dec_units=self._params["dec_units"],
-                npatch=npatch,
-                rng=np.random.RandomState(patch_seed),
+        cat_kwargs = {
+            "ra": ra[mask],
+            "dec": dec[mask],
+            "g1": g1[mask],
+            "g2": g2[mask],
+            "w": weights[mask] if weights is not None else None,
+            "ra_units": self._params["ra_units"],
+            "dec_units": self._params["dec_units"],
+        }
+        if patch_centers is None and npatch > 1:
+            # Catalog's automatic k-means does not forward min_top to its NField.
+            # A seeded RNG alone therefore still gives CPU-dependent patches.
+            rng = np.random.RandomState(patch_seed)
+            positions = treecorr.Catalog(**cat_kwargs, rng=rng)
+            field = positions.getNField(
+                min_top=DEFAULT_PATCH_MIN_TOP,
+                max_top=int.bit_length(npatch) - 1,
+                coords="spherical",
             )
-        else:
-            cat_tc = treecorr.Catalog(
-                ra=ra[mask],
-                dec=dec[mask],
-                g1=g1[mask],
-                g2=g2[mask],
-                w=weights[mask] if weights is not None else None,
-                ra_units=self._params["ra_units"],
-                dec_units=self._params["dec_units"],
-                patch_centers=patch_centers,
-            )
+            # The seeded field initialises TreeCorr's RNG, as in Catalog's
+            # automatic path; retain that seed sequence when pinning the tree.
+            _, patch_centers = field.run_kmeans(npatch)
+            del field, positions
+        cat_tc = treecorr.Catalog(**cat_kwargs, patch_centers=patch_centers)
 
         self.catalogs_dict.update({key: cat_tc})
 
