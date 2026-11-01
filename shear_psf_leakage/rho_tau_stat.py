@@ -295,7 +295,7 @@ class Catalogs:
         cat : str
             catalogue of galaxies or stars. Type should match the cat_type given in argument.
         cat_type : str
-            catalogue type, allowed are 'gal', 'psf', 'psf_error' or 'psf_size_error'
+            catalogue type, allowed are 'gal', 'gal_psf', 'psf', 'psf_error' or 'psf_size_error'
 
         Returns
         -------
@@ -318,6 +318,7 @@ class Catalogs:
 
         allowed_types = [
             "gal",
+            "gal_psf",
             "psf",
             "psf_error",
             "psf_size_error",
@@ -327,21 +328,29 @@ class Catalogs:
 
         assert cat_type in allowed_types, (
             "The specified catalogue type is invalid. Check the one you use is allowed."
-            "Allowed cat_type: 'gal', 'psf', 'psf_error', 'psf_size_error', 'psf_fourth_moment', 'psf_fourth_moment_error'."
+            "Allowed cat_type: 'gal', 'gal_psf', 'psf', 'psf_error', 'psf_size_error', 'psf_fourth_moment', 'psf_fourth_moment_error'."
         )
 
-        if cat_type == "gal":
+        if cat_type in ("gal", "gal_psf"):
             ra = cat[self._params["ra_col"]]
             dec = cat[self._params["dec_col"]]
             if self._params["w_col"] is not None:
                 weights = cat[self._params["w_col"]]
             else:
                 weights = np.ones_like(ra)
-            g1 = cat[self._params["e1_col"]] - np.average(
-                cat[self._params["e1_col"]], weights=weights
+            # Both fields use the galaxy weights, centring and response.
+            # The PSF template is the derivative of calibrated shear with
+            # respect to object-wise alpha leakage.
+            col1, col2 = (
+                ("e1_col", "e2_col")
+                if cat_type == "gal"
+                else ("e1_gal_PSF_col", "e2_gal_PSF_col")
             )
-            g2 = cat[self._params["e2_col"]] - np.average(
-                cat[self._params["e2_col"]], weights=weights
+            g1 = cat[self._params[col1]] - np.average(
+                cat[self._params[col1]], weights=weights
+            )
+            g2 = cat[self._params[col2]] - np.average(
+                cat[self._params[col2]], weights=weights
             )
             if self._params.get("R11", None) is not None:
                 g1 /= self._params["R11"]
@@ -426,7 +435,7 @@ class Catalogs:
         Parameters
         ----------
         cat_type : str
-            catalogue type, allowed are 'gal', 'psf', 'psf_error' or 'psf_size_error'.
+            catalogue type, allowed are 'gal', 'gal_psf', 'psf', 'psf_error' or 'psf_size_error'.
 
         key : str
             String used to key the catalog to an entry of the dict of catalogs.
@@ -1437,7 +1446,10 @@ class TauStat:
             already-loaded catalogue (see ``Catalogs.read_shear_cat``).
 
         cat_type : str
-            Specify the type of the catalogue to build. 'gal' or 'psf'
+            Specify 'gal', 'gal_psf' or 'psf'.
+            'gal_psf' uses the galaxy-position PSF columns
+            ``e1_gal_PSF_col`` and ``e2_gal_PSF_col`` with the same
+            weights, centring, response and selection as 'gal'.
 
         catalog_id : str
             An id to identify the catalog used in the keys of the stored treecorr.Catalog.
@@ -1538,8 +1550,8 @@ class TauStat:
                 patch_centers = None
             self.catalogs.build_catalog(
                 cat=gal_cat,
-                cat_type="gal",
-                key="gal_" + catalog_id,
+                cat_type=cat_type,
+                key=cat_type + "_" + catalog_id,
                 mask=mask,
                 patch_centers=patch_centers,
             )
@@ -1549,6 +1561,32 @@ class TauStat:
         if self.verbose:
             print("Catalogs successfully built...")
             self.catalogs.show_catalogs()
+
+    def compute_alpha_template(self, catalog_id):
+        """Correlate centred galaxy-position PSFs with the tau star fields.
+
+        Build 'psf' and 'gal_psf' catalogues with
+        :meth:`build_cat_to_compute_tau` first.
+        Returns TreeCorr GG correlations in tau0, tau2, tau5 order (tau5
+        only with ``use_eta``), retaining patch results for a joint
+        template/tau covariance.
+        Their xi+ values replace only the alpha column of the rho-to-tau
+        design; they are not rho statistics for predicting PSF auto-power.
+        The galaxy PSF is centred before the selection mask, matching
+        the galaxy ellipticity definition.
+        """
+        fields = ["psf", "psf_error"]
+        if self.use_eta:
+            fields.append("psf_size_error")
+        correlations = []
+        for field in fields:
+            corr = treecorr.GGCorrelation(self._treecorr_config)
+            corr.process(
+                self.catalogs.get_cat("gal_psf_" + catalog_id),
+                self.catalogs.get_cat(field + "_" + catalog_id),
+            )
+            correlations.append(corr)
+        return correlations
 
     def compute_tau_stats(
         self,
